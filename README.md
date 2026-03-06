@@ -95,6 +95,39 @@ npm run build
 npm link        # optional, makes `agentlens` available globally
 ```
 
+## Quick Start
+
+### 1. Configure workspace roots
+
+Tell AgentLens where your projects live so it can discover and scan them all:
+
+```bash
+# Add one or more root directories containing your projects
+agentlens config --add-root ~/Code
+agentlens config --add-root ~/Documents/Workspace
+
+# Verify configured roots
+agentlens config --list-roots
+```
+
+AgentLens will recursively discover projects with agent markers (`.cursor/`, `.claude/`, `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`) up to 3 levels deep.
+
+### 2. Run AgentLens
+
+```bash
+# From any project directory -- scans global + current project + all discovered projects
+agentlens
+```
+
+That's it. AgentLens launches an interactive TUI showing your full agent configuration map across all tools and projects.
+
+### 3. Explore the tree
+
+- Navigate with `j`/`k` (or arrow keys), expand/collapse with `l`/`h`
+- Press `Enter` to view entry details (path, symlinks, frontmatter, linked installations)
+- Press `/` to search/filter, `ESC` to clear
+- Press `?` to toggle the help bar
+
 ## Usage
 
 ```
@@ -127,24 +160,6 @@ agentlens where git-commit
 
 # Run health checks
 agentlens troubleshoot
-
-# Add a workspace root for multi-project discovery
-agentlens config --add-root ~/Documents/Workspace/Code
-```
-
-## Multi-Project Discovery
-
-When workspace roots are configured, AgentLens discovers all projects with agent markers (`.cursor/`, `.claude/`, `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`) up to 3 levels deep. All discovered projects are scanned and displayed under "OTHER PROJECTS" in the output.
-
-```bash
-# Add a root directory
-agentlens config --add-root ~/Code
-
-# View configured roots
-agentlens config --list-roots
-
-# Scan will now discover projects under ~/Code/**
-agentlens scan
 ```
 
 ## What Gets Scanned
