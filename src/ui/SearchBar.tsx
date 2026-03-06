@@ -27,8 +27,16 @@ export default function SearchBar({
         onClose(false);
         return;
       }
-      if (key.backspace) {
-        onQueryChange(query.slice(0, -1));
+      if (key.backspace || key.delete) {
+        if (query.length === 0) {
+          onClose(true);
+        } else {
+          onQueryChange(query.slice(0, -1));
+        }
+        return;
+      }
+      if (key.ctrl && input === 'c') {
+        onClose(true);
         return;
       }
       if (input.length > 0 && !key.ctrl && !key.meta) {

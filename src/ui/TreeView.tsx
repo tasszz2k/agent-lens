@@ -10,9 +10,16 @@ interface TreeViewProps {
   onSelect: (node: TreeNode) => void;
   onQuit: () => void;
   onSearchActivate: () => void;
+  onSearchClear: () => void;
+  onToggleHelp: () => void;
   active: boolean;
   height: number;
   width: number;
+  cursor: number;
+  onCursorChange: (cursor: number) => void;
+  scrollOffset: number;
+  onScrollOffsetChange: (offset: number) => void;
+  focusNodeId?: string;
 }
 
 function renderNodeLine(
@@ -71,13 +78,19 @@ export default function TreeView({
   onSelect,
   onQuit,
   onSearchActivate,
+  onSearchClear,
+  onToggleHelp,
   active,
   height,
   width,
+  cursor,
+  onCursorChange: setCursor,
+  scrollOffset,
+  onScrollOffsetChange: setScrollOffset,
+  focusNodeId,
 }: TreeViewProps) {
-  const [cursor, setCursor] = useState(0);
-  const [scrollOffset, setScrollOffset] = useState(0);
   const [expandedOverride, setExpandedOverride] = useState<Map<string, boolean>>(() => new Map());
+  const [pendingG, setPendingG] = useState(false);
 
   const isExpanded = useCallback(
     (node: TreeNode) => {
@@ -116,39 +129,90 @@ export default function TreeView({
       setScrollOffset(idx - visibleHeight + 1);
   }, [flattened.length, visibleHeight]);
 
+  useEffect(() => {
+    if (!focusNodeId || flattened.length === 0) return;
+    const idx = flattened.findIndex((f) => f.node.id === focusNodeId);
+    if (idx >= 0) {
+      setCursor(idx);
+      if (idx < scrollOffset) {
+        setScrollOffset(idx);
+      } else if (idx >= scrollOffset + visibleHeight) {
+        setScrollOffset(Math.min(
+          Math.max(0, flattened.length - visibleHeight),
+          idx - visibleHeight + 1
+        ));
+      }
+    }
+  }, [focusNodeId]);
+
+  const moveCursor = useCallback((target: number) => {
+    const clamped = Math.max(0, Math.min(flattened.length - 1, target));
+    setCursor(clamped);
+    if (clamped < scrollOffset) {
+      setScrollOffset(clamped);
+    } else if (clamped >= scrollOffset + visibleHeight) {
+      setScrollOffset(Math.min(
+        Math.max(0, flattened.length - visibleHeight),
+        clamped - visibleHeight + 1
+      ));
+    }
+  }, [flattened.length, scrollOffset, visibleHeight, setCursor, setScrollOffset]);
+
   useInput(
     (input, key) => {
       if (!active) return;
+
+      if (pendingG) {
+        setPendingG(false);
+        if (input === 'g') {
+          moveCursor(0);
+        }
+        return;
+      }
+
+      if (key.escape) {
+        if (searchQuery.length > 0) {
+          onSearchClear();
+        }
+        return;
+      }
       if (input === 'q') {
         onQuit();
+        return;
+      }
+      if (input === '?') {
+        onToggleHelp();
         return;
       }
       if (input === '/') {
         onSearchActivate();
         return;
       }
-      if (key.upArrow) {
-        const nextCursor = Math.max(0, cursor - 1);
-        setCursor(nextCursor);
-        if (nextCursor < scrollOffset) {
-          setScrollOffset(nextCursor);
-        }
+      if (key.upArrow || input === 'k') {
+        moveCursor(cursor - 1);
         return;
       }
-      if (key.downArrow) {
-        const nextCursor = Math.min(flattened.length - 1, cursor + 1);
-        setCursor(nextCursor);
-        if (nextCursor >= scrollOffset + visibleHeight) {
-          setScrollOffset(
-            Math.min(
-              Math.max(0, flattened.length - visibleHeight),
-              nextCursor - visibleHeight + 1
-            )
-          );
-        }
+      if (key.downArrow || input === 'j') {
+        moveCursor(cursor + 1);
         return;
       }
-      if (key.leftArrow) {
+      if (input === 'G') {
+        moveCursor(flattened.length - 1);
+        return;
+      }
+      if (input === 'g') {
+        setPendingG(true);
+        return;
+      }
+      if (key.ctrl && input === 'd') {
+        moveCursor(cursor + Math.floor(visibleHeight / 2));
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        moveCursor(cursor - Math.floor(visibleHeight / 2));
+        return;
+      }
+      if (key.leftArrow || input === 'h') {
         const item = flattened[cursor];
         if (!item) return;
         const { node } = item;
@@ -170,7 +234,7 @@ export default function TreeView({
         }
         return;
       }
-      if (key.rightArrow) {
+      if (key.rightArrow || input === 'l') {
         const item = flattened[cursor];
         if (!item) return;
         const { node } = item;

@@ -29,7 +29,7 @@ CLI tool that scans agent configuration across AI coding tools (Cursor, Claude C
 - `src/ai.ts` -- Claude Code CLI integration for AI analysis
 - `src/symlink.ts` -- Symlink chain tracing
 - `src/types.ts` -- Shared interfaces: `ScanResult`, `ProjectScan`, `ToolConfig`, `ConfigEntry`, `Diagnostic`, `TreeNode`, `McpServerEntry`
-- `src/ui/` -- Ink components: `App.tsx` (tree builder, multi-project support), `TreeView.tsx`, `SearchBar.tsx`, `DetailPanel.tsx`, `theme.ts`
+- `src/ui/` -- Ink components: `App.tsx` (tree builder, multi-project support, lifted cursor/scroll state), `TreeView.tsx` (vim navigation, focusNodeId), `SearchBar.tsx`, `DetailPanel.tsx` (linked entry navigation, linked vs cross-ref split), `HelpBar.tsx` (k9s-style keymap), `theme.ts`
 
 ## Key Patterns
 
@@ -56,3 +56,4 @@ CLI tool that scans agent configuration across AI coding tools (Cursor, Claude C
 - Minimal comments -- only for non-obvious logic
 - Error handling: silent catch with empty return (scanning is best-effort)
 - Paths displayed with `~` prefix via `tildify()` helper
+- Always run `npm run build` after any code change (binary at `./dist/cli.js` runs compiled output)

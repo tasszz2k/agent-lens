@@ -83,6 +83,10 @@ OTHER PROJECTS  (5 discovered)
       └── project-context.mdc "Project overview and architecture..."
 ```
 
+## Screenshot
+
+![AgentLens interactive TUI](docs/screenshot.png)
+
 ## Install
 
 ```bash
@@ -180,6 +184,26 @@ agentlens scan
 | Cursor | MCP | `.cursor/mcp.json` |
 | Copilot | MCP | `.vscode/mcp.json` |
 
+## Interactive TUI
+
+When run in a TTY, AgentLens displays an interactive tree with vim-style navigation:
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Move down / up |
+| `h` | Collapse node or jump to parent |
+| `l` | Expand node |
+| `Enter` | Open detail panel |
+| `/` | Search / filter |
+| `ESC` | Clear filter / close detail |
+| `gg` | Jump to top |
+| `G` | Jump to bottom |
+| `Ctrl+d` / `Ctrl+u` | Half page down / up |
+| `?` | Toggle help bar |
+| `q` | Quit |
+
+The detail panel shows entry metadata, symlink chains, frontmatter, and cross-tool linking. Linked entries (symlinks to the same file) and cross-references (same name, different file) are displayed separately and are navigable -- press `Enter` on a linked entry to jump directly to it.
+
 ## Health Checks
 
 The `troubleshoot` command detects:
@@ -216,9 +240,10 @@ src/
   types.ts          Shared type definitions
   ui/
     App.tsx          Interactive terminal UI (Ink/React)
-    TreeView.tsx     Keyboard-navigable tree
+    TreeView.tsx     Keyboard-navigable tree (vim keys, scroll persistence)
     SearchBar.tsx    '/' search filter
-    DetailPanel.tsx  Entry detail view
+    DetailPanel.tsx  Entry detail view with linked entry navigation
+    HelpBar.tsx      Toggleable k9s-style keymap header
     theme.ts         Chalk theme
 ```
 

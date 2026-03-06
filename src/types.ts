@@ -56,6 +56,15 @@ export interface Diagnostic {
   details?: string;
 }
 
+export interface LinkedEntry {
+  tool: string;
+  scope: string;
+  category: string;
+  path: string;
+  symlinkTarget?: string;
+  isSelf: boolean;
+}
+
 export interface TreeNode {
   id: string;
   label: string;
