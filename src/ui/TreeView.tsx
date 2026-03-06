@@ -12,6 +12,7 @@ interface TreeViewProps {
   onSearchActivate: () => void;
   onSearchClear: () => void;
   onToggleHelp: () => void;
+  onOpenSettings: () => void;
   active: boolean;
   height: number;
   width: number;
@@ -19,6 +20,8 @@ interface TreeViewProps {
   onCursorChange: (cursor: number) => void;
   scrollOffset: number;
   onScrollOffsetChange: (offset: number) => void;
+  expandedOverride: Map<string, boolean>;
+  onExpandedOverrideChange: React.Dispatch<React.SetStateAction<Map<string, boolean>>>;
   focusNodeId?: string;
 }
 
@@ -27,14 +30,19 @@ function renderNodeLine(
   prefix: string,
   isSelected: boolean,
   searchQuery: string,
-  maxWidth: number
+  maxWidth: number,
+  expanded: boolean
 ): React.ReactElement {
   const q = searchQuery.toLowerCase();
   const matchIdx = q.length > 0 ? node.label.toLowerCase().indexOf(q) : -1;
 
   let mainStyle: (s: string) => string;
   switch (node.type) {
-    case 'scope':          mainStyle = theme.scopeHeader; break;
+    case 'scope':
+      if (node.label.startsWith('CURRENT')) mainStyle = theme.scopeCurrent;
+      else if (node.label.startsWith('GLOBAL')) mainStyle = theme.scopeGlobal;
+      else mainStyle = theme.scopeProject;
+      break;
     case 'tool':           mainStyle = theme.toolName; break;
     case 'category':       mainStyle = theme.category; break;
     case 'entry':
@@ -55,6 +63,10 @@ function renderNodeLine(
   }
 
   let line = theme.treeLine(prefix) + label;
+
+  if (node.type === 'scope' && node.hasChildren && !expanded && !isSelected) {
+    line += ' ' + theme.dim('(l to expand)');
+  }
 
   if (node.pathLabel && !isSelected) {
     line += ' ' + theme.path(node.pathLabel);
@@ -80,6 +92,7 @@ export default function TreeView({
   onSearchActivate,
   onSearchClear,
   onToggleHelp,
+  onOpenSettings,
   active,
   height,
   width,
@@ -87,9 +100,10 @@ export default function TreeView({
   onCursorChange: setCursor,
   scrollOffset,
   onScrollOffsetChange: setScrollOffset,
+  expandedOverride,
+  onExpandedOverrideChange: setExpandedOverride,
   focusNodeId,
 }: TreeViewProps) {
-  const [expandedOverride, setExpandedOverride] = useState<Map<string, boolean>>(() => new Map());
   const [pendingG, setPendingG] = useState(false);
 
   const isExpanded = useCallback(
@@ -204,6 +218,15 @@ export default function TreeView({
         setPendingG(true);
         return;
       }
+      if (input === 'c') {
+        const idx = flattened.findIndex((f) => f.node.id.startsWith('scope:CURRENT'));
+        if (idx >= 0) moveCursor(idx);
+        return;
+      }
+      if (input === 's') {
+        onOpenSettings();
+        return;
+      }
       if (key.ctrl && input === 'd') {
         moveCursor(cursor + Math.floor(visibleHeight / 2));
         return;
@@ -273,7 +296,8 @@ export default function TreeView({
               fullPrefix,
               isSelected,
               searchQuery,
-              width
+              width,
+              isExpanded(node)
             )}
           </Box>
         );

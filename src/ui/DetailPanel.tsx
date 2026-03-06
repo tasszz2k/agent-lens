@@ -77,9 +77,10 @@ export default function DetailPanel({ node, onClose, onToggleHelp, onNavigateToE
         });
       });
     }
-    if (node.description) {
+    const fullDescription = entry?.description || node.description;
+    if (fullDescription) {
       result.push({ element: <Text key="desc-header" dimColor>Description: </Text> });
-      result.push({ element: <Text key="desc">{node.description}</Text> });
+      result.push({ element: <Text key="desc" wrap="wrap">{fullDescription}</Text> });
     }
     result.push({
       element: (

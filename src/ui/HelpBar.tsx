@@ -12,10 +12,12 @@ const treeKeys: KeyDef[] = [
   { key: 'l', label: 'Expand' },
   { key: 'enter', label: 'Open' },
   { key: '/', label: 'Search' },
+  { key: 'c', label: 'Current' },
   { key: 'gg', label: 'Top' },
   { key: 'G', label: 'Bottom' },
   { key: 'ctrl-d', label: 'Page Down' },
   { key: 'ctrl-u', label: 'Page Up' },
+  { key: 's', label: 'Settings' },
   { key: 'q', label: 'Quit' },
 ];
 
@@ -29,13 +31,19 @@ const detailKeys: KeyDef[] = [
   { key: 'q/esc', label: 'Close' },
 ];
 
+const settingsKeys: KeyDef[] = [
+  { key: 'j/k', label: 'Navigate' },
+  { key: 'space/enter', label: 'Toggle' },
+  { key: 'q/esc', label: 'Back' },
+];
+
 interface HelpBarProps {
-  view: 'tree' | 'detail';
+  view: 'tree' | 'detail' | 'settings';
   width: number;
 }
 
 export default function HelpBar({ view, width }: HelpBarProps) {
-  const keys = view === 'tree' ? treeKeys : detailKeys;
+  const keys = view === 'tree' ? treeKeys : view === 'detail' ? detailKeys : settingsKeys;
   const pairs: React.ReactElement[] = [];
   for (let i = 0; i < keys.length; i++) {
     const { key, label } = keys[i];

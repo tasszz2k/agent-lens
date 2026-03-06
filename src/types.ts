@@ -1,5 +1,7 @@
 export interface AgentLensConfig {
   roots: string[];
+  disabledTools?: string[];
+  disabledCategories?: string[];
 }
 
 export interface ProjectScan {

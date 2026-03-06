@@ -134,7 +134,8 @@ That's it. AgentLens launches an interactive TUI showing your full agent configu
 agentlens [scan] [options]      Scan and display agent config tree (default)
 agentlens where [name]          Trace where canonical skills are installed
 agentlens troubleshoot          Run health checks with optional AI analysis
-agentlens config                Manage workspace roots for project discovery
+agentlens config                Manage workspace roots and tool filters
+agentlens config tools          Manage tool/category visibility filters
 ```
 
 ### Options
@@ -160,6 +161,15 @@ agentlens where git-commit
 
 # Run health checks
 agentlens troubleshoot
+
+# Filter tools -- hide Codex from results
+agentlens config tools --disable "Codex"
+
+# Filter categories -- hide plugin skills
+agentlens config tools --disable "plugin"
+
+# Show current filter state
+agentlens config tools
 ```
 
 ## What Gets Scanned
@@ -211,13 +221,29 @@ When run in a TTY, AgentLens displays an interactive tree with vim-style navigat
 | `Enter` | Open detail panel |
 | `/` | Search / filter |
 | `ESC` | Clear filter / close detail |
+| `c` | Jump to CURRENT scope |
+| `s` | Open settings (tool/category filter) |
 | `gg` | Jump to top |
 | `G` | Jump to bottom |
 | `Ctrl+d` / `Ctrl+u` | Half page down / up |
 | `?` | Toggle help bar |
 | `q` | Quit |
 
-The detail panel shows entry metadata, symlink chains, frontmatter, and cross-tool linking. Linked entries (symlinks to the same file) and cross-references (same name, different file) are displayed separately and are navigable -- press `Enter` on a linked entry to jump directly to it.
+### Scopes
+
+The tree is organized into three scopes:
+
+- **CURRENT** (green) -- merged view of all active configs (global + project) for the current repo, grouped by category (Skills, Rules, MCP, etc.) then by tool. Collapsed by default; press `l` to expand.
+- **GLOBAL** (blue) -- all global/user-level configurations organized by tool.
+- **PROJECT** (white) -- project-level configurations for the current directory.
+
+### Detail Panel
+
+The detail panel shows entry metadata, symlink chains, frontmatter, and full descriptions. Linked entries (symlinks to the same file) and cross-references (same name, different file) are displayed separately and are navigable -- press `Enter` on a linked entry to jump directly to it.
+
+### Settings
+
+Press `s` to open the settings view where you can toggle visibility of individual tools (Canonical, Claude Code, Cursor, Codex, Copilot, Multi-agent) and categories (built-in skills, system skills, plugin skills, user rules). Changes are persisted to `~/.config/agentlens/config.json` and take effect immediately.
 
 ## Health Checks
 
@@ -244,22 +270,23 @@ npm start           # Run compiled output
 
 ```
 src/
-  cli.ts            CLI entry, Commander setup
+  cli.ts            CLI entry, Commander setup (scan, where, troubleshoot, config tools)
   scan.ts           Core scanning (global + project, multi-project discovery)
   parse.ts          Frontmatter, MDC, TOML, MCP JSON, hooks, SQLite parsing
-  config.ts         Config + workspace root management + project discovery
-  render.ts         Static text output
+  config.ts         Config, workspace roots, tool/category filters, project discovery
+  render.ts         Static text output (CURRENT, GLOBAL, PROJECT with filtering)
   troubleshoot.ts   Health checks and diagnostics
   ai.ts             Claude Code CLI integration
   symlink.ts        Symlink detection and resolution
   types.ts          Shared type definitions
   ui/
-    App.tsx          Interactive terminal UI (Ink/React)
+    App.tsx          Interactive terminal UI (Ink/React), CURRENT scope, filtering
     TreeView.tsx     Keyboard-navigable tree (vim keys, scroll persistence)
     SearchBar.tsx    '/' search filter
     DetailPanel.tsx  Entry detail view with linked entry navigation
+    SettingsView.tsx Tool/category filter settings panel
     HelpBar.tsx      Toggleable k9s-style keymap header
-    theme.ts         Chalk theme
+    theme.ts         Chalk theme (scope-colored headers)
 ```
 
 ## License

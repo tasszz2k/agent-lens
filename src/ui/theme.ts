@@ -3,6 +3,9 @@ import chalk from 'chalk';
 export const theme = {
   title: chalk.bold,
   scopeHeader: chalk.bold.white,
+  scopeGlobal: chalk.bold.blue,
+  scopeCurrent: chalk.bold.green,
+  scopeProject: chalk.bold.white,
   toolName: chalk.bold.white,
   category: chalk.yellow,
   categoryExtra: chalk.dim.yellow,
@@ -14,6 +17,7 @@ export const theme = {
   treeLine: chalk.dim,
   selected: chalk.inverse,
   searchHighlight: chalk.bold.underline,
+  dim: chalk.dim,
   error: chalk.red.bold,
   warn: chalk.yellow.bold,
   info: chalk.blue.bold,

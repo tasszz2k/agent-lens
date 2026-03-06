@@ -20,16 +20,16 @@ CLI tool that scans agent configuration across AI coding tools (Cursor, Claude C
 
 ## Project Structure
 
-- `src/cli.ts` -- CLI entry, Commander commands: `scan` (default), `where`, `troubleshoot`, `config`
+- `src/cli.ts` -- CLI entry, Commander commands: `scan` (default), `where`, `troubleshoot`, `config`, `config tools`
 - `src/scan.ts` -- Core scanning logic: `scanGlobal()`, `scanProject()`, `scanAll()`, `scanForWhereCommand()`. `scanDirectory()` supports multiple file patterns and recursive subdirectory traversal. `scanAll()` discovers and scans all projects from configured workspace roots.
 - `src/parse.ts` -- File parsing: frontmatter, skills, MDC rules (with YAML error fallback), commands, MCP JSON/TOML, hooks from settings.json, Cursor user rules from state.vscdb via sqlite3 CLI
-- `src/config.ts` -- AgentLens config at `~/.config/agentlens/config.json`, workspace root management, `discoverProjects()` recursively walks roots up to 3 levels deep looking for agent markers
-- `src/render.ts` -- Static text output rendering (non-TTY), renders GLOBAL, PROJECT, and OTHER PROJECTS sections
+- `src/config.ts` -- AgentLens config at `~/.config/agentlens/config.json`, workspace root management, tool/category filter persistence (`disabledTools`, `disabledCategories`), `LABEL_CATEGORIES` for label-based filtering, `discoverProjects()` recursively walks roots up to 3 levels deep looking for agent markers
+- `src/render.ts` -- Static text output rendering (non-TTY), renders CURRENT, GLOBAL, PROJECT, and OTHER PROJECTS sections with tool/category filtering
 - `src/troubleshoot.ts` -- Health check diagnostics
 - `src/ai.ts` -- Claude Code CLI integration for AI analysis
 - `src/symlink.ts` -- Symlink chain tracing
-- `src/types.ts` -- Shared interfaces: `ScanResult`, `ProjectScan`, `ToolConfig`, `ConfigEntry`, `Diagnostic`, `TreeNode`, `McpServerEntry`
-- `src/ui/` -- Ink components: `App.tsx` (tree builder, multi-project support, lifted cursor/scroll state), `TreeView.tsx` (vim navigation, focusNodeId), `SearchBar.tsx`, `DetailPanel.tsx` (linked entry navigation, linked vs cross-ref split), `HelpBar.tsx` (k9s-style keymap), `theme.ts`
+- `src/types.ts` -- Shared interfaces: `ScanResult`, `ProjectScan`, `ToolConfig`, `ConfigEntry`, `Diagnostic`, `TreeNode`, `McpServerEntry`, `AgentLensConfig`
+- `src/ui/` -- Ink components: `App.tsx` (tree builder, CURRENT scope, multi-project support, lifted cursor/scroll/expandedOverride state, tool/category filtering), `TreeView.tsx` (vim navigation, focusNodeId, expand hints), `SearchBar.tsx`, `DetailPanel.tsx` (linked entry navigation, linked vs cross-ref split, full description display), `HelpBar.tsx` (k9s-style keymap, view-adaptive), `SettingsView.tsx` (tool/category filter toggles), `theme.ts` (scope-colored headers)
 
 ## Key Patterns
 

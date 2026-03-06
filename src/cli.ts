@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { scanAll, scanForWhereCommand } from './scan.js';
-import { loadConfig, saveConfig, addRoot, removeRoot, discoverProjects, getConfigPath } from './config.js';
+import { loadConfig, saveConfig, addRoot, removeRoot, setToolEnabled as configSetToolEnabled, setCategoryEnabled as configSetCategoryEnabled, LABEL_CATEGORIES, discoverProjects, getConfigPath } from './config.js';
 import { runChecks } from './troubleshoot.js';
 import { analyzeWithClaude, isClaudeAvailable } from './ai.js';
 import { formatDiagnosticsForAI } from './troubleshoot.js';
@@ -59,18 +59,22 @@ program
       const { render } = await import('ink');
       const React = await import('react');
       const { default: App } = await import('./ui/App.js');
+      const config = await loadConfig();
       const instance = render(
         React.createElement(App, {
           scanResult: result,
           diagnostics,
           mode: 'scan',
+          initialDisabledTools: config.disabledTools,
+          initialDisabledCategories: config.disabledCategories,
         })
       );
       instance.waitUntilExit().then(() => {
         process.stdout.write('\x1b[?1049l');
       });
     } else {
-      console.log(renderStatic(result));
+      const config = await loadConfig();
+      console.log(renderStatic(result, config.disabledTools, config.disabledCategories));
       await runDiagnosticsAndAI(diagnostics, opts.ai === false);
     }
   });
@@ -145,7 +149,7 @@ program
     }
   });
 
-program
+const configCmd = program
   .command('config')
   .description('Manage agentlens configuration')
   .option('--add-root <path>', 'Add a workspace root directory')
@@ -178,6 +182,67 @@ program
         console.log(`  ${root}`);
       }
     }
+    console.log();
+    const disabled = config.disabledTools ?? [];
+    if (disabled.length > 0) {
+      console.log('Disabled tools:');
+      for (const t of disabled) {
+        console.log(`  ${t}`);
+      }
+    } else {
+      console.log('All tools enabled.');
+    }
+    console.log();
+    console.log('Manage tools: agentlens config tools');
+  });
+
+configCmd
+  .command('tools')
+  .description('Manage tool and category visibility filters')
+  .option('--enable <name>', 'Enable a tool or category')
+  .option('--disable <name>', 'Disable a tool or category')
+  .action(async (opts) => {
+    const knownTools = ['Canonical', 'Claude Code', 'Cursor', 'Codex', 'Copilot', 'Multi-agent'];
+    const categoryIds = LABEL_CATEGORIES.map((c) => c.id);
+
+    if (opts.enable) {
+      if (categoryIds.includes(opts.enable)) {
+        await configSetCategoryEnabled(opts.enable, true);
+      } else {
+        await configSetToolEnabled(opts.enable, true);
+      }
+      console.log(`Enabled: ${opts.enable}`);
+      return;
+    }
+    if (opts.disable) {
+      if (categoryIds.includes(opts.disable)) {
+        await configSetCategoryEnabled(opts.disable, false);
+      } else {
+        await configSetToolEnabled(opts.disable, false);
+      }
+      console.log(`Disabled: ${opts.disable}`);
+      return;
+    }
+
+    const config = await loadConfig();
+    const disabledTools = new Set(config.disabledTools ?? []);
+    const disabledCats = new Set(config.disabledCategories ?? []);
+
+    console.log('Tools:');
+    for (const tool of knownTools) {
+      const status = disabledTools.has(tool) ? '[ ]' : '[x]';
+      console.log(`  ${status} ${tool}`);
+    }
+    console.log();
+    console.log('Categories:');
+    for (const cat of LABEL_CATEGORIES) {
+      const status = disabledCats.has(cat.id) ? '[ ]' : '[x]';
+      console.log(`  ${status} ${cat.label} (${cat.id})`);
+    }
+    console.log();
+    console.log('Usage:');
+    console.log('  agentlens config tools --enable "Codex"');
+    console.log('  agentlens config tools --disable "plugin"');
   });
 
 program.parse();

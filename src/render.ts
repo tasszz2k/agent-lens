@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import type { ScanResult, ToolConfig, ConfigEntry, Diagnostic } from './types.js';
 import type { WhereInstallation } from './scan.js';
+import { matchesDisabledCategory } from './config.js';
 
 function tildify(p: string): string {
   const home = os.homedir();
@@ -95,26 +96,105 @@ function renderToolBlock(configs: ToolConfig[], tildifyPath: (p: string) => stri
   return lines.join('\n');
 }
 
-export function renderStatic(result: ScanResult): string {
+function groupByCategory(configs: ToolConfig[]): Map<string, ToolConfig[]> {
+  const map = new Map<string, ToolConfig[]>();
+  for (const tc of configs) {
+    const list = map.get(tc.category) ?? [];
+    list.push(tc);
+    map.set(tc.category, list);
+  }
+  return map;
+}
+
+function renderCurrentBlock(configs: ToolConfig[]): string {
+  const lines: string[] = [];
+  const dim = chalk.dim;
+  const branch = dim('├── ');
+  const last = dim('└── ');
+
+  const byCategory = groupByCategory(configs);
+  const categories = [...byCategory.entries()];
+  categories.forEach(([category, tcs], catIdx) => {
+    const isLastCat = catIdx === categories.length - 1;
+    const catPrefix = isLastCat ? last : branch;
+    lines.push(`  ${catPrefix}${chalk.yellow(category)}`);
+    const catPipe = isLastCat ? '      ' : `  ${dim('│')}   `;
+    const byTool = groupByTool(tcs);
+    const tools = [...byTool.entries()];
+    tools.forEach(([, toolConfigs], toolIdx) => {
+      const isLastTool = toolIdx === tools.length - 1;
+      const toolPrefix = isLastTool ? last : branch;
+      for (let ti = 0; ti < toolConfigs.length; ti++) {
+        const tc = toolConfigs[ti];
+        const isActuallyLast = isLastTool && ti === toolConfigs.length - 1;
+        const prefix = isActuallyLast ? last : branch;
+        const labelExtra = tc.label ? chalk.dim(' ' + tc.label) : '';
+        const toolLabel = chalk.bold.white(tc.tool) + labelExtra;
+        const basePath = dim('  ' + tildify(tc.basePath) + (tc.category === 'Context' ? '' : path.sep));
+        lines.push(`${catPipe}${prefix}${toolLabel}${basePath}`);
+        const toolPipe = isActuallyLast ? catPipe + '    ' : catPipe + `${dim('│')}   `;
+        tc.entries.forEach((e, i) => {
+          const isLast = i === tc.entries.length - 1;
+          const ePrefix = isLast ? last : branch;
+          const displayName = tc.category === 'MCP Servers' || tc.category === 'Hooks'
+            ? e.name
+            : e.path.endsWith('SKILL.md') ? e.name + '/SKILL.md' : path.basename(e.path);
+          const name = chalk.bold.white(displayName);
+          const desc = e.description
+            ? tc.category === 'MCP Servers' || tc.category === 'Hooks'
+              ? ' ' + chalk.gray(e.description)
+              : chalk.gray(' "' + truncateDesc(e.description) + '"')
+            : '';
+          const symPart = e.symlink
+            ? chalk.cyan(' --> ') + chalk.cyan(e.symlink.raw)
+            : '';
+          lines.push(`${toolPipe}${ePrefix}${name}${symPart}${desc}`);
+        });
+      }
+    });
+  });
+  return lines.join('\n');
+}
+
+export function renderStatic(result: ScanResult, disabledTools?: string[], disabledCategories?: string[]): string {
+  const disabledT = new Set(disabledTools ?? []);
+  const disabledC = new Set(disabledCategories ?? []);
+  const filterTc = (configs: ToolConfig[]) =>
+    configs.filter((tc) => !disabledT.has(tc.tool) && !matchesDisabledCategory(tc.label, disabledC));
+
+  const globalConfigs = filterTc(result.global);
+  const projectConfigs = filterTc(result.project);
+
   const lines: string[] = [];
   lines.push(chalk.bold('AGENTLENS -- Agent Configuration Map'));
   lines.push('=====================================');
   lines.push('');
 
-  lines.push(chalk.bold.white('GLOBAL'));
+  const currentConfigs = [...globalConfigs, ...projectConfigs].filter(
+    (tc) => tc.entries.length > 0
+  );
+  if (currentConfigs.length > 0) {
+    lines.push(chalk.bold.green('CURRENT') + chalk.dim('  ' + tildify(result.projectPath)));
+    lines.push('');
+    lines.push(renderCurrentBlock(currentConfigs));
+    lines.push('');
+  }
+
+  lines.push(chalk.bold.blue('GLOBAL'));
   lines.push('');
-  const globalByTool = groupByTool(result.global);
+  const globalByTool = groupByTool(globalConfigs);
   for (const [, configs] of globalByTool) {
     lines.push(renderToolBlock(configs, tildify));
   }
   lines.push('');
 
   lines.push(chalk.bold.white('PROJECT') + chalk.dim('  ' + tildify(result.projectPath)));
+
   lines.push('');
-  if (result.project.length === 0) {
+  if (projectConfigs.length === 0) {
     lines.push('  ' + chalk.dim.italic('(no project-level agent config found)'));
   } else {
-    const projectByTool = groupByTool(result.project);
+    const projectByTool = groupByTool(projectConfigs);
     for (const [, configs] of projectByTool) {
       lines.push(renderToolBlock(configs, tildify));
     }
@@ -126,10 +206,11 @@ export function renderStatic(result: ScanResult): string {
     for (const proj of result.projects) {
       lines.push('');
       lines.push(chalk.bold.white('  ' + tildify(proj.path)));
-      if (proj.configs.length === 0) {
+      const filteredProjConfigs = filterTc(proj.configs);
+      if (filteredProjConfigs.length === 0) {
         lines.push('    ' + chalk.dim.italic('(no agent config)'));
       } else {
-        const projByTool = groupByTool(proj.configs);
+        const projByTool = groupByTool(filteredProjConfigs);
         for (const [, configs] of projByTool) {
           lines.push(renderToolBlock(configs, tildify));
         }

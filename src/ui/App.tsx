@@ -4,8 +4,10 @@ import TreeView from './TreeView.js';
 import SearchBar from './SearchBar.js';
 import DetailPanel from './DetailPanel.js';
 import HelpBar from './HelpBar.js';
+import SettingsView from './SettingsView.js';
 import { theme } from './theme.js';
 import type { ScanResult, TreeNode, ToolConfig, ConfigEntry, Diagnostic, LinkedEntry } from '../types.js';
+import { setToolEnabled, setCategoryEnabled, matchesDisabledCategory } from '../config.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -30,6 +32,19 @@ function groupByTool(configs: ToolConfig[]): Map<string, ToolConfig[]> {
     map.set(tc.tool, list);
   }
   return map;
+}
+
+function filterByTools(result: ScanResult, disabledTools: Set<string>, disabledCats: Set<string>): ScanResult {
+  if (disabledTools.size === 0 && disabledCats.size === 0) return result;
+  const filter = (configs: ToolConfig[]) => configs.filter((tc) =>
+    !disabledTools.has(tc.tool) && !matchesDisabledCategory(tc.label, disabledCats)
+  );
+  return {
+    ...result,
+    global: filter(result.global),
+    project: filter(result.project),
+    projects: result.projects?.map((p) => ({ ...p, configs: filter(p.configs) })),
+  };
 }
 
 export function buildTreeFromScan(result: ScanResult): TreeNode[] {
@@ -141,6 +156,85 @@ export function buildTreeFromScan(result: ScanResult): TreeNode[] {
     };
   }
 
+  function makeCurrentScope(sr: ScanResult): TreeNode {
+    const all = [...sr.global, ...sr.project].filter(
+      (tc) => tc.entries.length > 0
+    );
+
+    const byCategory = new Map<string, ToolConfig[]>();
+    for (const tc of all) {
+      const list = byCategory.get(tc.category) ?? [];
+      list.push(tc);
+      byCategory.set(tc.category, list);
+    }
+
+    const children: TreeNode[] = [];
+    for (const [category, configs] of byCategory) {
+      const byTool = groupByTool(configs);
+      const toolChildren: TreeNode[] = [];
+      for (const [, toolConfigs] of byTool) {
+        for (const tc of toolConfigs) {
+          const labelExtra = tc.label ? ` ${tc.label}` : '';
+          const toolLabel = `${tc.tool} ${labelExtra}`.trim();
+          const pathLabel = tildify(tc.basePath) + (tc.category === 'Context' ? '' : path.sep);
+          const entryChildren: TreeNode[] = [];
+          for (const e of tc.entries) {
+            const isMcpOrHooks = tc.category === 'MCP Servers' || tc.category === 'Hooks';
+            const displayName = isMcpOrHooks
+              ? e.name
+              : e.path.endsWith('SKILL.md')
+                ? e.name + '/SKILL.md'
+                : path.basename(e.path);
+            entryChildren.push({
+              id: `current:entry:${e.path}:${e.name}`,
+              label: displayName,
+              type: 'entry',
+              depth: 3,
+              expanded: false,
+              hasChildren: false,
+              children: [],
+              data: e,
+              pathLabel: e.path,
+              symlinkTarget: e.symlink?.resolved,
+              description: e.description ? truncateDesc(e.description) : undefined,
+            });
+          }
+          toolChildren.push({
+            id: `current:tool:${tc.tool}:${tc.basePath}`,
+            label: toolLabel,
+            type: 'tool',
+            depth: 2,
+            expanded: true,
+            hasChildren: entryChildren.length > 0,
+            children: entryChildren,
+            data: tc,
+            pathLabel,
+          });
+        }
+      }
+      children.push({
+        id: `current:cat:${category}`,
+        label: category,
+        type: 'category',
+        depth: 1,
+        expanded: true,
+        hasChildren: toolChildren.length > 0,
+        children: toolChildren,
+      });
+    }
+
+    return {
+      id: `scope:CURRENT ${tildify(sr.projectPath)}`,
+      label: `CURRENT ${tildify(sr.projectPath)}`,
+      type: 'scope',
+      depth: 0,
+      expanded: false,
+      hasChildren: children.length > 0,
+      children,
+    };
+  }
+
+  roots.push(makeCurrentScope(result));
   roots.push(
     makeScope('GLOBAL', result.global, tildify)
   );
@@ -226,21 +320,28 @@ interface AppProps {
   scanResult: ScanResult;
   diagnostics: Diagnostic[];
   mode: 'scan' | 'where';
+  initialDisabledTools?: string[];
+  initialDisabledCategories?: string[];
 }
 
 export default function App({
   scanResult,
   diagnostics,
   mode,
+  initialDisabledTools,
+  initialDisabledCategories,
 }: AppProps) {
   const { exit } = useApp();
-  const [view, setView] = useState<'tree' | 'detail'>('tree');
+  const [view, setView] = useState<'tree' | 'detail' | 'settings'>('tree');
+  const [disabledTools, setDisabledTools] = useState<Set<string>>(() => new Set(initialDisabledTools ?? []));
+  const [disabledCategories, setDisabledCategories] = useState<Set<string>>(() => new Set(initialDisabledCategories ?? []));
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchActive, setSearchActive] = useState(false);
   const [treeCursor, setTreeCursor] = useState(0);
   const [treeScrollOffset, setTreeScrollOffset] = useState(0);
   const [focusNodeId, setFocusNodeId] = useState<string | undefined>();
+  const [expandedOverride, setExpandedOverride] = useState<Map<string, boolean>>(() => new Map());
   const [showHelp, setShowHelp] = useState(true);
   const [terminalRows, setTerminalRows] = useState(process.stdout?.rows ?? 24);
   const [terminalCols, setTerminalCols] = useState(process.stdout?.columns ?? 80);
@@ -256,14 +357,19 @@ export default function App({
     };
   }, []);
 
+  const effectiveScanResult = useMemo(
+    () => filterByTools(scanResult, disabledTools, disabledCategories),
+    [scanResult, disabledTools, disabledCategories]
+  );
+
   const treeNodes = useMemo(
-    () => buildTreeFromScan(scanResult),
-    [scanResult]
+    () => buildTreeFromScan(effectiveScanResult),
+    [effectiveScanResult]
   );
 
   const crossRef = useMemo(
-    () => buildCrossRefIndex(scanResult),
-    [scanResult]
+    () => buildCrossRefIndex(effectiveScanResult),
+    [effectiveScanResult]
   );
 
   const filteredNodes = useMemo(
@@ -326,6 +432,40 @@ export default function App({
     setShowHelp((prev) => !prev);
   }, []);
 
+  const handleOpenSettings = useCallback(() => {
+    setView('settings');
+  }, []);
+
+  const handleSettingsClose = useCallback(() => {
+    setView('tree');
+  }, []);
+
+  const handleToggleTool = useCallback((tool: string) => {
+    setDisabledTools((prev) => {
+      const next = new Set(prev);
+      if (next.has(tool)) {
+        next.delete(tool);
+      } else {
+        next.add(tool);
+      }
+      setToolEnabled(tool, !next.has(tool)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const handleToggleCategory = useCallback((category: string) => {
+    setDisabledCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      setCategoryEnabled(category, !next.has(category)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const searchBarVisible = (searchActive && view === 'tree') || searchQuery.length > 0;
   const helpBarRows = showHelp ? 2 : 0;
   const footerRows = (searchBarVisible ? 1 : 0) + (diagnostics.length > 0 ? 1 : 0);
@@ -349,6 +489,7 @@ export default function App({
             onSearchActivate={handleSearchActivate}
             onSearchClear={handleSearchClear}
             onToggleHelp={handleToggleHelp}
+            onOpenSettings={handleOpenSettings}
             active={!searchActive}
             height={contentHeight}
             width={terminalCols}
@@ -356,7 +497,21 @@ export default function App({
             onCursorChange={setTreeCursor}
             scrollOffset={treeScrollOffset}
             onScrollOffsetChange={setTreeScrollOffset}
+            expandedOverride={expandedOverride}
+            onExpandedOverrideChange={setExpandedOverride}
             focusNodeId={focusNodeId}
+          />
+        )}
+        {view === 'settings' && (
+          <SettingsView
+            scanResult={scanResult}
+            disabledTools={disabledTools}
+            disabledCategories={disabledCategories}
+            onToggleTool={handleToggleTool}
+            onToggleCategory={handleToggleCategory}
+            onClose={handleSettingsClose}
+            height={contentHeight}
+            width={terminalCols}
           />
         )}
         {view === 'detail' && selectedNode && (
@@ -387,10 +542,10 @@ export default function App({
         onQueryChange={setSearchQuery}
         onClose={(clear) => handleSearchClose(clear)}
       />
-      {diagnostics.length > 0 && (
+      {diagnostics.some((d) => d.severity === 'error' || d.severity === 'warn') && (
         <Text>
-          {diagnostics.length} issue
-          {diagnostics.length === 1 ? '' : 's'} found (
+          {diagnostics.filter((d) => d.severity === 'error' || d.severity === 'warn').length} issue
+          {diagnostics.filter((d) => d.severity === 'error' || d.severity === 'warn').length === 1 ? '' : 's'} found (
           {diagnostics.filter((d) => d.severity === 'error').length} error
           {diagnostics.filter((d) => d.severity === 'error').length === 1 ? '' : 's'}
           , {diagnostics.filter((d) => d.severity === 'warn').length} warning
