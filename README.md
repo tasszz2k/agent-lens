@@ -4,6 +4,26 @@ CLI tool that scans and inspects agent configuration across AI coding tools.
 
 AgentLens discovers skills, rules, commands, context files, hooks, and MCP server configs for **Cursor**, **Claude Code**, **Codex**, **GitHub Copilot**, and multi-agent setups (`AGENTS.md`). It scans both global (`~/.cursor`, `~/.claude`, etc.) and project-level locations, then displays an interactive tree or static text map. With configured workspace roots, it also discovers and scans all projects across your workspace.
 
+It also provides a **cost dashboard** showing usage and costs for Claude Code (from local JSONL logs) and Cursor (from the Cursor API).
+
+## Screenshots
+
+### Scan -- agent configuration tree
+
+![AgentLens Scan view](docs/screenshot-scan.png)
+
+### Skill detail panel
+
+![AgentLens skill detail](docs/screenshot-skill.png)
+
+### Cost -- usage and cost dashboard
+
+![AgentLens Cost view](docs/screenshot-cost.png)
+
+### Settings -- settings and configuration
+
+![AgentLens Settings](docs/screenshot-settings.png)
+
 ## Sample Output
 
 ```
@@ -83,10 +103,6 @@ OTHER PROJECTS  (5 discovered)
       └── project-context.mdc "Project overview and architecture..."
 ```
 
-## Screenshot
-
-![AgentLens interactive TUI](docs/screenshot.png)
-
 ## Install
 
 ```bash
@@ -126,19 +142,34 @@ That's it. AgentLens launches an interactive TUI showing your full agent configu
 - Navigate with `j`/`k` (or arrow keys), expand/collapse with `l`/`h`
 - Press `Enter` to view entry details (path, symlinks, frontmatter, linked installations)
 - Press `/` to search/filter, `ESC` to clear
+- Press `:` to open the command bar and switch pages (Scan, Cost)
 - Press `?` to toggle the help bar
+
+### 4. View usage costs
+
+```bash
+# Open the cost dashboard directly
+agentlens cost
+
+# Or switch to the Cost page from the TUI with `:cost`
+```
+
+See [Cost Dashboard](#cost-dashboard) for setup details.
 
 ## Usage
 
 ```
 agentlens [scan] [options]      Scan and display agent config tree (default)
+agentlens cost [options]        Show agent usage and cost dashboard
 agentlens where [name]          Trace where canonical skills are installed
 agentlens troubleshoot          Run health checks with optional AI analysis
-agentlens config                Manage workspace roots and tool filters
+agentlens config                Manage workspace roots, tokens, and tool filters
 agentlens config tools          Manage tool/category visibility filters
 ```
 
 ### Options
+
+**scan** (default command)
 
 | Flag | Description |
 |---|---|
@@ -146,6 +177,23 @@ agentlens config tools          Manage tool/category visibility filters
 | `--no-global` | Skip global config scanning |
 | `--no-ai` | Skip AI analysis |
 | `--json` | Output JSON instead of tree |
+
+**cost**
+
+| Flag | Description |
+|---|---|
+| `--json` | Output JSON instead of formatted text |
+| `--no-cursor` | Skip Cursor API (only show Claude Code costs) |
+
+**config**
+
+| Flag | Description |
+|---|---|
+| `--add-root <path>` | Add a workspace root directory |
+| `--remove-root <path>` | Remove a workspace root directory |
+| `--list-roots` | List configured root directories |
+| `--set-cursor-token <token>` | Set Cursor session token for cost tracking |
+| `--clear-cursor-token` | Remove stored Cursor session token |
 
 ### Examples
 
@@ -155,6 +203,12 @@ agentlens
 
 # Scan a specific project, JSON output
 agentlens scan -p ~/projects/myapp --json
+
+# View cost dashboard
+agentlens cost
+
+# View Claude Code costs only (skip Cursor)
+agentlens cost --no-cursor
 
 # Find where a canonical skill is installed
 agentlens where git-commit
@@ -171,6 +225,37 @@ agentlens config tools --disable "plugin"
 # Show current filter state
 agentlens config tools
 ```
+
+## Cost Dashboard
+
+AgentLens aggregates usage and cost data from multiple AI coding tools into a single view.
+
+### Claude Code
+
+Costs are calculated from local usage logs (`~/.claude/projects/*/` JSONL files). Token counts (input, output, cache read, cache write) are aggregated per model and multiplied by model-specific pricing to produce estimated costs for the current month.
+
+No setup required -- AgentLens reads the logs directly from disk.
+
+### Cursor
+
+Usage data (premium request counts and token totals) is fetched from the Cursor API. This requires a session token:
+
+1. Open [cursor.com](https://cursor.com) in your browser and sign in
+2. Open DevTools (`F12`) > **Application** > **Cookies** > `cursor.com`
+3. Copy the value of the `WorkosCursorSessionToken` cookie
+4. Set it in AgentLens:
+
+```bash
+agentlens config --set-cursor-token <paste-token-here>
+```
+
+The token is stored in `~/.config/agentlens/config.json`. To remove it:
+
+```bash
+agentlens config --clear-cursor-token
+```
+
+The Cursor dashboard shows premium request usage against your plan limit (e.g., 450/500), plan type, and per-model token/request breakdown. Dollar cost is not available from the Cursor API.
 
 ## What Gets Scanned
 
@@ -220,6 +305,7 @@ When run in a TTY, AgentLens displays an interactive tree with vim-style navigat
 | `l` | Expand node |
 | `Enter` | Open detail panel |
 | `/` | Search / filter |
+| `:` | Open command bar (switch pages) |
 | `ESC` | Clear filter / close detail |
 | `c` | Jump to CURRENT scope |
 | `s` | Open settings (tool/category filter) |
@@ -229,9 +315,16 @@ When run in a TTY, AgentLens displays an interactive tree with vim-style navigat
 | `?` | Toggle help bar |
 | `q` | Quit |
 
+### Pages
+
+The TUI has two top-level pages, switchable via the `:` command bar (type or use up/down arrows to select):
+
+- **Scan** -- agent configuration tree (default)
+- **Cost** -- usage and cost dashboard
+
 ### Scopes
 
-The tree is organized into three scopes:
+The Scan page tree is organized into three scopes:
 
 - **CURRENT** (green) -- merged view of all active configs (global + project) for the current repo, grouped by category (Skills, Rules, MCP, etc.) then by tool. Collapsed by default; press `l` to expand.
 - **GLOBAL** (blue) -- all global/user-level configurations organized by tool.
@@ -270,20 +363,23 @@ npm start           # Run compiled output
 
 ```
 src/
-  cli.ts            CLI entry, Commander setup (scan, where, troubleshoot, config tools)
+  cli.ts            CLI entry, Commander setup (scan, cost, where, troubleshoot, config)
   scan.ts           Core scanning (global + project, multi-project discovery)
   parse.ts          Frontmatter, MDC, TOML, MCP JSON, hooks, SQLite parsing
-  config.ts         Config, workspace roots, tool/category filters, project discovery
-  render.ts         Static text output (CURRENT, GLOBAL, PROJECT with filtering)
+  config.ts         Config, workspace roots, tool/category filters, Cursor token, project discovery
+  cost.ts           Cost aggregation (Claude Code JSONL logs, Cursor API)
+  render.ts         Static text output (CURRENT, GLOBAL, PROJECT with filtering, cost report)
   troubleshoot.ts   Health checks and diagnostics
   ai.ts             Claude Code CLI integration
   symlink.ts        Symlink detection and resolution
   types.ts          Shared type definitions
   ui/
-    App.tsx          Interactive terminal UI (Ink/React), CURRENT scope, filtering
+    App.tsx          Interactive terminal UI (Ink/React), page navigation, CURRENT scope, filtering
     TreeView.tsx     Keyboard-navigable tree (vim keys, scroll persistence)
     SearchBar.tsx    '/' search filter
+    CommandBar.tsx   ':' command palette for page switching
     DetailPanel.tsx  Entry detail view with linked entry navigation
+    CostView.tsx     Usage and cost dashboard view
     SettingsView.tsx Tool/category filter settings panel
     HelpBar.tsx      Toggleable k9s-style keymap header
     theme.ts         Chalk theme (scope-colored headers)

@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import path from 'node:path';
 import os from 'node:os';
-import type { ScanResult, ToolConfig, ConfigEntry, Diagnostic } from './types.js';
+import type { ScanResult, ToolConfig, ConfigEntry, Diagnostic, CostReport } from './types.js';
 import type { WhereInstallation } from './scan.js';
 import { matchesDisabledCategory } from './config.js';
 
@@ -268,6 +268,100 @@ export function renderWhereResult(canonicalSkills: ConfigEntry[], installations:
     lines.push('');
   }
   return lines.join('\n').trimEnd();
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
+export function renderCostStatic(report: CostReport): string {
+  const lines: string[] = [];
+  lines.push(chalk.bold(`AGENTLENS -- Cost Report: ${report.month}`));
+  lines.push('='.repeat(45));
+  lines.push('');
+
+  let grandTotal = 0;
+
+  for (const tool of report.tools) {
+    const hasCost = tool.totalCostUsd > 0 || tool.models.some(m => m.costUsd > 0);
+    const hasRequests = tool.totalRequests != null && tool.totalRequests > 0;
+    const hasLimit = tool.maxRequests != null && tool.maxRequests > 0;
+
+    let summaryStr: string;
+    if (tool.error) {
+      summaryStr = chalk.red('--');
+    } else if (hasCost) {
+      summaryStr = chalk.green('$' + tool.totalCostUsd.toFixed(2));
+    } else if (hasRequests && hasLimit) {
+      summaryStr = chalk.cyan(`${tool.totalRequests} / ${tool.maxRequests} reqs`);
+    } else if (hasRequests) {
+      summaryStr = chalk.cyan(`${tool.totalRequests} reqs`);
+    } else {
+      summaryStr = chalk.dim('--');
+    }
+
+    const planLabel = tool.planType ? chalk.dim(` (${tool.planType})`) : '';
+    lines.push(`${chalk.bold.white(tool.tool)}${planLabel}${' '.repeat(Math.max(1, 40 - tool.tool.length - (tool.planType ? tool.planType.length + 3 : 0)))}${summaryStr}`);
+
+    if (tool.error) {
+      lines.push(`  ${chalk.red('Error: ' + tool.error)}`);
+      lines.push('');
+      continue;
+    }
+
+    lines.push(chalk.dim(`  Period: ${tool.period}`));
+
+    if (hasRequests && hasLimit) {
+      const pct = ((tool.totalRequests! / tool.maxRequests!) * 100).toFixed(1);
+      const barWidth = 20;
+      const filled = Math.round((tool.totalRequests! / tool.maxRequests!) * barWidth);
+      const bar = chalk.cyan('\u2588'.repeat(filled)) + chalk.dim('\u2591'.repeat(barWidth - filled));
+      lines.push(`  ${bar} ${tool.totalRequests} / ${tool.maxRequests} premium requests (${pct}%)`);
+    }
+
+    lines.push('');
+
+    if (tool.models.length > 0) {
+      if (hasRequests && !hasCost) {
+        const header = '  ' + 'Model'.padEnd(25) + 'Tokens'.padEnd(12) + 'Requests';
+        lines.push(chalk.dim(header));
+        for (const m of tool.models) {
+          const row = '  ' +
+            chalk.yellow(m.model.padEnd(25)) +
+            formatTokenCount(m.inputTokens).padEnd(12) +
+            String(m.numRequests ?? 0);
+          lines.push(row);
+        }
+        lines.push('');
+        lines.push(chalk.dim(`  Total: ${formatTokenCount(tool.totalInputTokens)} tokens / ${tool.totalRequests} requests`));
+      } else {
+        const header = '  ' + 'Model'.padEnd(25) + 'Input'.padEnd(12) + 'Output'.padEnd(12) + 'Cache W'.padEnd(12) + 'Cache R'.padEnd(12) + 'Cost';
+        lines.push(chalk.dim(header));
+        for (const m of tool.models) {
+          const row = '  ' +
+            chalk.yellow(m.model.padEnd(25)) +
+            formatTokenCount(m.inputTokens).padEnd(12) +
+            formatTokenCount(m.outputTokens).padEnd(12) +
+            formatTokenCount(m.cacheWriteTokens).padEnd(12) +
+            formatTokenCount(m.cacheReadTokens).padEnd(12) +
+            chalk.green('$' + m.costUsd.toFixed(2));
+          lines.push(row);
+        }
+        lines.push('');
+        lines.push(chalk.dim(`  Total Tokens: ${formatTokenCount(tool.totalInputTokens)} in / ${formatTokenCount(tool.totalOutputTokens)} out`));
+      }
+    }
+
+    lines.push('');
+    grandTotal += tool.totalCostUsd;
+  }
+
+  lines.push(chalk.dim('-'.repeat(45)));
+  lines.push(`${chalk.bold('TOTAL')}${' '.repeat(35)}${chalk.bold.green('$' + grandTotal.toFixed(2))}`);
+
+  return lines.join('\n');
 }
 
 export function renderJson(data: unknown): string {

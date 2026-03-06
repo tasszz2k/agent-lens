@@ -39,7 +39,7 @@ export async function loadConfig(): Promise<AgentLensConfig> {
   const configPath = getConfigPath();
   try {
     const raw = await fs.readFile(configPath, 'utf-8');
-    const parsed = JSON.parse(raw) as { roots?: string[]; disabledTools?: string[]; disabledCategories?: string[] };
+    const parsed = JSON.parse(raw) as { roots?: string[]; disabledTools?: string[]; disabledCategories?: string[]; cursorSessionToken?: string };
     const roots = Array.isArray(parsed?.roots)
       ? parsed.roots.map(fromPortable)
       : [];
@@ -49,7 +49,10 @@ export async function loadConfig(): Promise<AgentLensConfig> {
     const disabledCategories = Array.isArray(parsed?.disabledCategories)
       ? parsed.disabledCategories
       : undefined;
-    return { roots, disabledTools, disabledCategories };
+    const cursorSessionToken = typeof parsed?.cursorSessionToken === 'string'
+      ? parsed.cursorSessionToken
+      : undefined;
+    return { roots, disabledTools, disabledCategories, cursorSessionToken };
   } catch {
     return { roots: [] };
   }
@@ -67,6 +70,9 @@ export async function saveConfig(config: AgentLensConfig): Promise<void> {
   }
   if (config.disabledCategories && config.disabledCategories.length > 0) {
     portable.disabledCategories = config.disabledCategories;
+  }
+  if (config.cursorSessionToken) {
+    portable.cursorSessionToken = config.cursorSessionToken;
   }
   await fs.writeFile(configPath, JSON.stringify(portable, null, 2) + '\n');
 }
@@ -120,6 +126,13 @@ export async function setCategoryEnabled(category: string, enabled: boolean): Pr
     ...config,
     disabledCategories: disabled.size > 0 ? [...disabled].sort() : undefined,
   };
+  await saveConfig(next);
+  return next;
+}
+
+export async function setCursorToken(token: string | undefined): Promise<AgentLensConfig> {
+  const config = await loadConfig();
+  const next: AgentLensConfig = { ...config, cursorSessionToken: token };
   await saveConfig(next);
   return next;
 }

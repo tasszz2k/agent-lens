@@ -6,6 +6,9 @@ All notable changes to AgentLens are documented in this file.
 
 ### Added
 
+- **Cost dashboard**: new `agentlens cost` command and interactive Cost page showing usage and costs for Claude Code and Cursor. Claude Code costs are calculated from local JSONL usage logs with per-model pricing. Cursor shows premium request usage against plan limits fetched from the Cursor API.
+- **Page navigation**: k9s-style `:` command bar to switch between pages (Scan, Cost). Supports typing to filter or up/down arrow keys to select. Each page shows a short description.
+- **Cursor session token management**: `agentlens config --set-cursor-token` and `--clear-cursor-token` for storing the Cursor API session token used by the cost dashboard.
 - **CURRENT scope**: new top-level section merging global + project configs, grouped by category (Skills, Rules, MCP, etc.) then by tool. Provides a single view of all active AI configs for the current repo. Starts collapsed; `c` hotkey jumps to it.
 - **Settings view**: press `s` to open an in-app settings panel where you can toggle visibility of individual tools (Canonical, Claude Code, Cursor, Codex, Copilot, Multi-agent) and categories (built-in skills, system skills, plugin skills, user rules). Changes persist to `~/.config/agentlens/config.json`.
 - **CLI tool filter**: `agentlens config tools` subcommand to list, enable, and disable tools/categories from the command line (`--enable`, `--disable` flags).

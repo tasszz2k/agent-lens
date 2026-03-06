@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { scanAll, scanForWhereCommand } from './scan.js';
-import { loadConfig, saveConfig, addRoot, removeRoot, setToolEnabled as configSetToolEnabled, setCategoryEnabled as configSetCategoryEnabled, LABEL_CATEGORIES, discoverProjects, getConfigPath } from './config.js';
+import { loadConfig, saveConfig, addRoot, removeRoot, setToolEnabled as configSetToolEnabled, setCategoryEnabled as configSetCategoryEnabled, setCursorToken, LABEL_CATEGORIES, discoverProjects, getConfigPath } from './config.js';
 import { runChecks } from './troubleshoot.js';
 import { analyzeWithClaude, isClaudeAvailable } from './ai.js';
 import { formatDiagnosticsForAI } from './troubleshoot.js';
@@ -67,6 +67,8 @@ program
           mode: 'scan',
           initialDisabledTools: config.disabledTools,
           initialDisabledCategories: config.disabledCategories,
+          configRoots: config.roots,
+          hasCursorToken: !!config.cursorSessionToken,
         })
       );
       instance.waitUntilExit().then(() => {
@@ -76,6 +78,78 @@ program
       const config = await loadConfig();
       console.log(renderStatic(result, config.disabledTools, config.disabledCategories));
       await runDiagnosticsAndAI(diagnostics, opts.ai === false);
+    }
+  });
+
+program
+  .command('cost')
+  .description('Show agent usage cost dashboard')
+  .option('--json', 'Output JSON instead of formatted text')
+  .option('--no-cursor', 'Skip Cursor API (only show Claude Code costs)')
+  .action(async (opts) => {
+    const { fetchAllCosts, fetchClaudeCodeCosts } = await import('./cost.js');
+
+    if (opts.json) {
+      let report;
+      if (opts.cursor === false) {
+        const claudeCosts = await fetchClaudeCodeCosts();
+        const now = new Date();
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        report = {
+          tools: [claudeCosts],
+          month: `${monthNames[now.getMonth()]} ${now.getFullYear()}`,
+          monthStart: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
+          fetchedAt: now.toISOString(),
+        };
+      } else {
+        report = await fetchAllCosts();
+      }
+      console.log(renderJson(report));
+      return;
+    }
+
+    const isTTY = process.stdout.isTTY;
+    if (isTTY) {
+      process.stdout.write('\x1b[?1049h');
+      process.stdout.write('\x1b[H');
+      const { render } = await import('ink');
+      const React = await import('react');
+      const { default: App } = await import('./ui/App.js');
+      const config = await loadConfig();
+      const result = await scanAll(process.cwd(), true);
+      const diagnostics = await runChecks(result);
+      const instance = render(
+        React.createElement(App, {
+          scanResult: result,
+          diagnostics,
+          mode: 'scan',
+          initialDisabledTools: config.disabledTools,
+          initialDisabledCategories: config.disabledCategories,
+          initialPage: 'cost',
+          configRoots: config.roots,
+          hasCursorToken: !!config.cursorSessionToken,
+        })
+      );
+      instance.waitUntilExit().then(() => {
+        process.stdout.write('\x1b[?1049l');
+      });
+    } else {
+      const { renderCostStatic } = await import('./render.js');
+      let report;
+      if (opts.cursor === false) {
+        const claudeCosts = await fetchClaudeCodeCosts();
+        const now = new Date();
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        report = {
+          tools: [claudeCosts],
+          month: `${monthNames[now.getMonth()]} ${now.getFullYear()}`,
+          monthStart: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
+          fetchedAt: now.toISOString(),
+        };
+      } else {
+        report = await fetchAllCosts();
+      }
+      console.log(renderCostStatic(report));
     }
   });
 
@@ -155,7 +229,22 @@ const configCmd = program
   .option('--add-root <path>', 'Add a workspace root directory')
   .option('--remove-root <path>', 'Remove a workspace root directory')
   .option('--list-roots', 'List configured root directories')
+  .option('--set-cursor-token <token>', 'Set Cursor session token for cost tracking')
+  .option('--clear-cursor-token', 'Remove stored Cursor session token')
   .action(async (opts) => {
+    if (opts.setCursorToken) {
+      await setCursorToken(opts.setCursorToken);
+      console.log('Cursor session token saved.');
+      console.log('Run "agentlens cost" to view your Cursor usage costs.');
+      return;
+    }
+
+    if (opts.clearCursorToken) {
+      await setCursorToken(undefined);
+      console.log('Cursor session token removed.');
+      return;
+    }
+
     if (opts.addRoot) {
       const config = await addRoot(opts.addRoot);
       console.log(`Added root: ${opts.addRoot}`);

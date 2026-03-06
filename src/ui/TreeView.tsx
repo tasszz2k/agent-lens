@@ -13,6 +13,7 @@ interface TreeViewProps {
   onSearchClear: () => void;
   onToggleHelp: () => void;
   onOpenSettings: () => void;
+  onCommandBarOpen: () => void;
   active: boolean;
   height: number;
   width: number;
@@ -93,6 +94,7 @@ export default function TreeView({
   onSearchClear,
   onToggleHelp,
   onOpenSettings,
+  onCommandBarOpen,
   active,
   height,
   width,
@@ -200,6 +202,10 @@ export default function TreeView({
       }
       if (input === '/') {
         onSearchActivate();
+        return;
+      }
+      if (input === ':') {
+        onCommandBarOpen();
         return;
       }
       if (key.upArrow || input === 'k') {

@@ -2,6 +2,7 @@ export interface AgentLensConfig {
   roots: string[];
   disabledTools?: string[];
   disabledCategories?: string[];
+  cursorSessionToken?: string;
 }
 
 export interface ProjectScan {
@@ -80,4 +81,34 @@ export interface TreeNode {
   symlinkTarget?: string;
   description?: string;
   diagnostic?: Diagnostic;
+}
+
+export interface CostReport {
+  tools: ToolCostSummary[];
+  month: string;
+  monthStart: string;
+  fetchedAt: string;
+}
+
+export interface ToolCostSummary {
+  tool: string;
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalRequests?: number;
+  maxRequests?: number;
+  planType?: string;
+  models: ModelCostBreakdown[];
+  period: string;
+  error?: string;
+}
+
+export interface ModelCostBreakdown {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+  costUsd: number;
+  numRequests?: number;
 }

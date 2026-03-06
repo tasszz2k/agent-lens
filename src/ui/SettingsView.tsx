@@ -1,13 +1,20 @@
 import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
+import os from 'node:os';
+import path from 'node:path';
 import type { ScanResult } from '../types.js';
-import { LABEL_CATEGORIES } from '../config.js';
+import { LABEL_CATEGORIES, getConfigPath } from '../config.js';
 
-interface SettingsItem {
-  type: 'tool' | 'category';
-  id: string;
-  label: string;
+function tildify(p: string): string {
+  const home = os.homedir();
+  if (p === home || p.startsWith(home + path.sep)) return '~' + p.slice(home.length);
+  return p;
 }
+
+type ListItem =
+  | { kind: 'header'; id: string; label: string }
+  | { kind: 'info'; id: string; render: () => React.ReactElement }
+  | { kind: 'toggle'; type: 'tool' | 'category'; id: string; label: string };
 
 interface SettingsViewProps {
   scanResult: ScanResult;
@@ -18,6 +25,8 @@ interface SettingsViewProps {
   onClose: () => void;
   height: number;
   width: number;
+  configRoots: string[];
+  hasCursorToken: boolean;
 }
 
 export default function SettingsView({
@@ -29,19 +38,113 @@ export default function SettingsView({
   onClose,
   height,
   width,
+  configRoots,
+  hasCursorToken,
 }: SettingsViewProps) {
   const [cursor, setCursor] = useState(0);
 
   const items = useMemo(() => {
-    const result: (SettingsItem | 'tools-header' | 'categories-header')[] = [];
+    const result: ListItem[] = [];
+
+    const dim = '\u2502';
+    const branch = '\u251C\u2500\u2500';
+    const last = '\u2514\u2500\u2500';
+    const col = 22;
+
+    result.push({ kind: 'header', id: 'config-header', label: 'Configuration' });
+    result.push({
+      kind: 'info', id: 'config-path',
+      render: () => (
+        <Text>
+          {'    '}
+          <Text dimColor>{'Config'.padEnd(col)}</Text>
+          <Text>{tildify(getConfigPath())}</Text>
+        </Text>
+      ),
+    });
+
+    const projectCount = scanResult.projects?.length ?? 0;
+    result.push({
+      kind: 'info', id: 'projects-count',
+      render: () => (
+        <Text>
+          {'    '}
+          <Text dimColor>{'Discovered Projects'.padEnd(col)}</Text>
+          <Text>{projectCount > 0 ? String(projectCount) : '--'}</Text>
+        </Text>
+      ),
+    });
+
+    result.push({
+      kind: 'info', id: 'cursor-token',
+      render: () => (
+        <Text>
+          {'    '}
+          <Text dimColor>{'Cursor Token'.padEnd(col)}</Text>
+          {hasCursorToken
+            ? <Text color="green">configured</Text>
+            : <Text dimColor>not set</Text>}
+        </Text>
+      ),
+    });
+    if (!hasCursorToken) {
+      result.push({
+        kind: 'info', id: 'cursor-hint',
+        render: () => (
+          <Text dimColor>{'    '.padEnd(col + 4)}agentlens config --set-cursor-token {'<token>'}</Text>
+        ),
+      });
+    }
+
+    result.push({
+      kind: 'info', id: 'roots-header',
+      render: () => (
+        <Text>
+          {'    '}
+          <Text dimColor>{'Workspace Roots'.padEnd(col)}</Text>
+          {configRoots.length > 0
+            ? <Text>{configRoots.length}</Text>
+            : <Text dimColor>none</Text>}
+        </Text>
+      ),
+    });
+    if (configRoots.length > 0) {
+      for (let i = 0; i < configRoots.length; i++) {
+        const isLast = i === configRoots.length - 1;
+        const prefix = isLast ? last : branch;
+        const idx = i;
+        result.push({
+          kind: 'info', id: `root-${i}`,
+          render: () => (
+            <Text>
+              {'    '}
+              <Text dimColor>{' '.repeat(col)}{prefix} </Text>
+              <Text color="white">{tildify(configRoots[idx])}</Text>
+            </Text>
+          ),
+        });
+      }
+    } else {
+      result.push({
+        kind: 'info', id: 'roots-hint',
+        render: () => (
+          <Text dimColor>{'    '.padEnd(col + 4)}agentlens config --add-root {'<path>'}</Text>
+        ),
+      });
+    }
+
+    result.push({
+      kind: 'info', id: 'config-spacer',
+      render: () => <Text>{' '}</Text>,
+    });
 
     const toolNames = new Set<string>();
     for (const tc of [...scanResult.global, ...scanResult.project]) {
       toolNames.add(tc.tool);
     }
-    result.push('tools-header');
+    result.push({ kind: 'header', id: 'tools-header', label: 'Tools' });
     for (const name of [...toolNames].sort()) {
-      result.push({ type: 'tool', id: name, label: name });
+      result.push({ kind: 'toggle', type: 'tool', id: name, label: name });
     }
 
     const presentLabels = new Set<string>();
@@ -55,21 +158,21 @@ export default function SettingsView({
     }
 
     if (presentLabels.size > 0) {
-      result.push('categories-header');
+      result.push({ kind: 'header', id: 'categories-header', label: 'Categories' });
       for (const cat of LABEL_CATEGORIES) {
         if (presentLabels.has(cat.id)) {
-          result.push({ type: 'category', id: cat.id, label: cat.label });
+          result.push({ kind: 'toggle', type: 'category', id: cat.id, label: cat.label });
         }
       }
     }
 
     return result;
-  }, [scanResult]);
+  }, [scanResult, configRoots, hasCursorToken]);
 
   const selectableIndices = useMemo(() => {
     const out: number[] = [];
     items.forEach((item, i) => {
-      if (typeof item !== 'string') out.push(i);
+      if (item.kind === 'toggle') out.push(i);
     });
     return out;
   }, [items]);
@@ -95,7 +198,7 @@ export default function SettingsView({
     }
     if (input === ' ' || key.return) {
       const item = items[cursor];
-      if (typeof item === 'string') return;
+      if (item.kind !== 'toggle') return;
       if (item.type === 'tool') onToggleTool(item.id);
       else onToggleCategory(item.id);
       return;
@@ -108,17 +211,16 @@ export default function SettingsView({
 
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1} paddingY={1} height={height} width={width}>
-      <Text bold>SETTINGS - Filters</Text>
-      <Text dimColor>Toggle which tools and categories appear in scan results</Text>
+      <Text bold>SETTINGS</Text>
       <Text>{' '}</Text>
       <Box flexDirection="column" flexGrow={1}>
         {visible.map((item, i) => {
           const globalIdx = scrollOffset + i;
-          if (item === 'tools-header') {
-            return <Text key="th" bold dimColor>  Tools</Text>;
+          if (item.kind === 'header') {
+            return <Text key={item.id} bold dimColor>  {item.label}</Text>;
           }
-          if (item === 'categories-header') {
-            return <Text key="ch" bold dimColor>{'\n'}  Categories</Text>;
+          if (item.kind === 'info') {
+            return <Box key={item.id}>{item.render()}</Box>;
           }
           const isSelected = globalIdx === cursor;
           const isDisabled = item.type === 'tool'

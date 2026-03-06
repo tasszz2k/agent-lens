@@ -5,8 +5,11 @@ import SearchBar from './SearchBar.js';
 import DetailPanel from './DetailPanel.js';
 import HelpBar from './HelpBar.js';
 import SettingsView from './SettingsView.js';
+import CommandBar from './CommandBar.js';
+import CostView from './CostView.js';
 import { theme } from './theme.js';
-import type { ScanResult, TreeNode, ToolConfig, ConfigEntry, Diagnostic, LinkedEntry } from '../types.js';
+import type { ScanResult, TreeNode, ToolConfig, ConfigEntry, Diagnostic, LinkedEntry, CostReport } from '../types.js';
+import { fetchAllCosts } from '../cost.js';
 import { setToolEnabled, setCategoryEnabled, matchesDisabledCategory } from '../config.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -322,6 +325,9 @@ interface AppProps {
   mode: 'scan' | 'where';
   initialDisabledTools?: string[];
   initialDisabledCategories?: string[];
+  initialPage?: 'scan' | 'cost';
+  configRoots?: string[];
+  hasCursorToken?: boolean;
 }
 
 export default function App({
@@ -330,6 +336,9 @@ export default function App({
   mode,
   initialDisabledTools,
   initialDisabledCategories,
+  initialPage,
+  configRoots,
+  hasCursorToken,
 }: AppProps) {
   const { exit } = useApp();
   const [view, setView] = useState<'tree' | 'detail' | 'settings'>('tree');
@@ -345,6 +354,10 @@ export default function App({
   const [showHelp, setShowHelp] = useState(true);
   const [terminalRows, setTerminalRows] = useState(process.stdout?.rows ?? 24);
   const [terminalCols, setTerminalCols] = useState(process.stdout?.columns ?? 80);
+  const [page, setPage] = useState<'scan' | 'cost'>(initialPage ?? 'scan');
+  const [commandBarActive, setCommandBarActive] = useState(false);
+  const [costReport, setCostReport] = useState<CostReport | null>(null);
+  const [costLoading, setCostLoading] = useState(false);
 
   useEffect(() => {
     const onResize = () => {
@@ -440,6 +453,47 @@ export default function App({
     setView('tree');
   }, []);
 
+  const handleFetchCosts = useCallback(async () => {
+    setCostLoading(true);
+    try {
+      const report = await fetchAllCosts();
+      setCostReport(report);
+    } catch {
+      // best-effort
+    } finally {
+      setCostLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (page === 'cost' && !costReport && !costLoading) {
+      handleFetchCosts();
+    }
+  }, [page]);
+
+  const handleCommandBarOpen = useCallback(() => {
+    setCommandBarActive(true);
+  }, []);
+
+  const handleCommandBarClose = useCallback(() => {
+    setCommandBarActive(false);
+  }, []);
+
+  const handleNavigatePage = useCallback((targetPage: string) => {
+    setCommandBarActive(false);
+    if (targetPage === 'scan' || targetPage === 'cost') {
+      setPage(targetPage);
+      if (targetPage === 'scan') {
+        setView('tree');
+      }
+    }
+  }, []);
+
+  const handleCostClose = useCallback(() => {
+    setPage('scan');
+    setView('tree');
+  }, []);
+
   const handleToggleTool = useCallback((tool: string) => {
     setDisabledTools((prev) => {
       const next = new Set(prev);
@@ -467,72 +521,93 @@ export default function App({
   }, []);
 
   const searchBarVisible = (searchActive && view === 'tree') || searchQuery.length > 0;
+  const commandBarVisible = commandBarActive;
   const helpBarRows = showHelp ? 2 : 0;
-  const footerRows = (searchBarVisible ? 1 : 0) + (diagnostics.length > 0 ? 1 : 0);
+  const commandBarRows = commandBarVisible ? 3 : 0;
+  const footerRows = (searchBarVisible ? 1 : 0) + commandBarRows + (diagnostics.length > 0 ? 1 : 0);
   const contentHeight = Math.max(1, terminalRows - 2 - helpBarRows - footerRows);
 
   return (
     <Box flexDirection="column" width="100%" height={terminalRows} overflow="hidden">
       <Box justifyContent="space-between" width={terminalCols}>
-        <Text>{theme.title('AGENTLENS')}</Text>
+        <Text>{theme.title('AGENTLENS')}{theme.title(' > ' + page.charAt(0).toUpperCase() + page.slice(1))}</Text>
         <Text dimColor>{'<?> help'}</Text>
       </Box>
-      {showHelp && <HelpBar view={view} width={terminalCols} />}
+      {showHelp && <HelpBar view={page === 'cost' ? 'cost' : view} width={terminalCols} />}
       <Text dimColor>{'─'.repeat(40)}</Text>
       <Box flexGrow={1} flexDirection="column">
-        {view === 'tree' && (
-          <TreeView
-            nodes={filteredNodes}
-            searchQuery={searchQuery}
-            onSelect={handleSelect}
-            onQuit={handleQuit}
-            onSearchActivate={handleSearchActivate}
-            onSearchClear={handleSearchClear}
+        {page === 'scan' && (
+          <>
+            {view === 'tree' && (
+              <TreeView
+                nodes={filteredNodes}
+                searchQuery={searchQuery}
+                onSelect={handleSelect}
+                onQuit={handleQuit}
+                onSearchActivate={handleSearchActivate}
+                onSearchClear={handleSearchClear}
+                onToggleHelp={handleToggleHelp}
+                onOpenSettings={handleOpenSettings}
+                onCommandBarOpen={handleCommandBarOpen}
+                active={!searchActive && !commandBarActive}
+                height={contentHeight}
+                width={terminalCols}
+                cursor={treeCursor}
+                onCursorChange={setTreeCursor}
+                scrollOffset={treeScrollOffset}
+                onScrollOffsetChange={setTreeScrollOffset}
+                expandedOverride={expandedOverride}
+                onExpandedOverrideChange={setExpandedOverride}
+                focusNodeId={focusNodeId}
+              />
+            )}
+            {view === 'settings' && (
+              <SettingsView
+                scanResult={scanResult}
+                disabledTools={disabledTools}
+                disabledCategories={disabledCategories}
+                onToggleTool={handleToggleTool}
+                onToggleCategory={handleToggleCategory}
+                onClose={handleSettingsClose}
+                height={contentHeight}
+                width={terminalCols}
+                configRoots={configRoots ?? []}
+                hasCursorToken={hasCursorToken ?? false}
+              />
+            )}
+            {view === 'detail' && selectedNode && (
+              <DetailPanel
+                node={selectedNode}
+                onClose={handleDetailClose}
+                onToggleHelp={handleToggleHelp}
+                onNavigateToEntry={handleNavigateToEntry}
+                height={contentHeight}
+                linkedEntries={(() => {
+                  const entry = selectedNode.data && 'path' in selectedNode.data
+                    ? selectedNode.data as ConfigEntry
+                    : null;
+                  if (!entry) return undefined;
+                  const all = crossRef.get(entry.name);
+                  if (!all || all.length <= 1) return undefined;
+                  return all.map((le) => ({
+                    ...le,
+                    isSelf: le.path === entry.path,
+                  }));
+                })()}
+              />
+            )}
+          </>
+        )}
+        {page === 'cost' && (
+          <CostView
+            report={costReport}
+            loading={costLoading}
+            onClose={handleCostClose}
+            onRefresh={handleFetchCosts}
+            onCommandBarOpen={handleCommandBarOpen}
             onToggleHelp={handleToggleHelp}
-            onOpenSettings={handleOpenSettings}
-            active={!searchActive}
             height={contentHeight}
             width={terminalCols}
-            cursor={treeCursor}
-            onCursorChange={setTreeCursor}
-            scrollOffset={treeScrollOffset}
-            onScrollOffsetChange={setTreeScrollOffset}
-            expandedOverride={expandedOverride}
-            onExpandedOverrideChange={setExpandedOverride}
-            focusNodeId={focusNodeId}
-          />
-        )}
-        {view === 'settings' && (
-          <SettingsView
-            scanResult={scanResult}
-            disabledTools={disabledTools}
-            disabledCategories={disabledCategories}
-            onToggleTool={handleToggleTool}
-            onToggleCategory={handleToggleCategory}
-            onClose={handleSettingsClose}
-            height={contentHeight}
-            width={terminalCols}
-          />
-        )}
-        {view === 'detail' && selectedNode && (
-          <DetailPanel
-            node={selectedNode}
-            onClose={handleDetailClose}
-            onToggleHelp={handleToggleHelp}
-            onNavigateToEntry={handleNavigateToEntry}
-            height={contentHeight}
-            linkedEntries={(() => {
-              const entry = selectedNode.data && 'path' in selectedNode.data
-                ? selectedNode.data as ConfigEntry
-                : null;
-              if (!entry) return undefined;
-              const all = crossRef.get(entry.name);
-              if (!all || all.length <= 1) return undefined;
-              return all.map((le) => ({
-                ...le,
-                isSelf: le.path === entry.path,
-              }));
-            })()}
           />
         )}
       </Box>
@@ -541,6 +616,11 @@ export default function App({
         query={searchQuery}
         onQueryChange={setSearchQuery}
         onClose={(clear) => handleSearchClose(clear)}
+      />
+      <CommandBar
+        active={commandBarActive}
+        onNavigate={handleNavigatePage}
+        onClose={handleCommandBarClose}
       />
       {diagnostics.some((d) => d.severity === 'error' || d.severity === 'warn') && (
         <Text>
