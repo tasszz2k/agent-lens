@@ -1,0 +1,58 @@
+---
+description: AgentLens project context and conventions
+globs: src/**
+alwaysApply: true
+---
+
+# AgentLens
+
+CLI tool that scans agent configuration across AI coding tools (Cursor, Claude Code, Codex, Copilot). Discovers skills, rules, commands, context files, hooks, and MCP server configs at both global and project level. With configured workspace roots, discovers and scans all projects across the workspace.
+
+## Tech Stack
+
+- TypeScript 5.9, ES modules (`"type": "module"`)
+- Commander 14 for CLI
+- Ink 6 + React 19 for interactive terminal UI
+- gray-matter for frontmatter parsing (with manual fallback for YAML edge cases), smol-toml for TOML
+- Chalk 5 for terminal styling
+- sqlite3 CLI for reading Cursor's internal state database
+- Build: `tsc` to `dist/`, dev: `tsx src/cli.ts`
+
+## Project Structure
+
+- `src/cli.ts` -- CLI entry, Commander commands: `scan` (default), `where`, `troubleshoot`, `config`
+- `src/scan.ts` -- Core scanning logic: `scanGlobal()`, `scanProject()`, `scanAll()`, `scanForWhereCommand()`. `scanDirectory()` supports multiple file patterns and recursive subdirectory traversal. `scanAll()` discovers and scans all projects from configured workspace roots.
+- `src/parse.ts` -- File parsing: frontmatter, skills, MDC rules (with YAML error fallback), commands, MCP JSON/TOML, hooks from settings.json, Cursor user rules from state.vscdb via sqlite3 CLI
+- `src/config.ts` -- AgentLens config at `~/.config/agentlens/config.json`, workspace root management, `discoverProjects()` recursively walks roots up to 3 levels deep looking for agent markers
+- `src/render.ts` -- Static text output rendering (non-TTY), renders GLOBAL, PROJECT, and OTHER PROJECTS sections
+- `src/troubleshoot.ts` -- Health check diagnostics
+- `src/ai.ts` -- Claude Code CLI integration for AI analysis
+- `src/symlink.ts` -- Symlink chain tracing
+- `src/types.ts` -- Shared interfaces: `ScanResult`, `ProjectScan`, `ToolConfig`, `ConfigEntry`, `Diagnostic`, `TreeNode`, `McpServerEntry`
+- `src/ui/` -- Ink components: `App.tsx` (tree builder, multi-project support), `TreeView.tsx`, `SearchBar.tsx`, `DetailPanel.tsx`, `theme.ts`
+
+## Key Patterns
+
+- All imports use `.js` extension (Node16 module resolution)
+- Scan locations are declarative arrays in `scanGlobal()` and `scanProject()` with a `type` field dispatching to the right parser
+- Each scan category produces `ConfigEntry[]` wrapped in `ToolConfig`
+- The `ConfigEntry` interface carries `name`, `path`, `exists`, optional `symlink`, `frontmatter`, and `description`
+- Rendering (both static and interactive UI) is generic over `ToolConfig`/`ConfigEntry` -- new categories appear automatically
+- Categories with entry names derived from data (not filenames): `MCP Servers` and `Hooks` use `e.name` directly for display
+- `scanDirectory()` accepts `string | string[]` for file patterns and an optional `recursive` flag for walking subdirectories
+- `ScanResult.projects` holds all discovered projects (excluding current) from configured workspace roots
+- `discoverProjects()` skips `.`-prefixed, `node_modules`, and `vendor` directories; stops recursing once a project marker is found
+
+## Adding a New Scan Category
+
+1. Add a parser function in `parse.ts` returning `ConfigEntry[]`
+2. Add location entries to the `locations` array in `scanGlobal()` and/or `projectLocations` in `scanProject()` with a new type
+3. Add the type to the union and add a handler branch in the scan loop
+4. If entries use `name` instead of filename for display, update the display name condition in `render.ts` and `ui/App.tsx`
+
+## Conventions
+
+- No emoji in code
+- Minimal comments -- only for non-obvious logic
+- Error handling: silent catch with empty return (scanning is best-effort)
+- Paths displayed with `~` prefix via `tildify()` helper
