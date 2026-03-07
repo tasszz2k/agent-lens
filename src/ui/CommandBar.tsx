@@ -4,6 +4,7 @@ import { Box, Text, useInput } from 'ink';
 const PAGES = [
   { id: 'scan', label: 'Scan', desc: 'Agent configuration map' },
   { id: 'cost', label: 'Cost', desc: 'Usage & cost dashboard' },
+  { id: 'quit', label: 'Quit', desc: 'Exit AgentLens' },
 ] as const;
 
 interface CommandBarProps {

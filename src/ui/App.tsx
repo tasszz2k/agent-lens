@@ -508,13 +508,17 @@ export default function App({
 
   const handleNavigatePage = useCallback((targetPage: string) => {
     setCommandBarActive(false);
+    if (targetPage === 'quit') {
+      exit();
+      return;
+    }
     if (targetPage === 'scan' || targetPage === 'cost') {
       setPage(targetPage);
       if (targetPage === 'scan') {
         setView('tree');
       }
     }
-  }, []);
+  }, [exit]);
 
   const handleCostClose = useCallback(() => {
     setPage('scan');
@@ -550,7 +554,7 @@ export default function App({
   const searchBarVisible = (searchActive && view === 'tree') || searchQuery.length > 0;
   const commandBarVisible = commandBarActive;
   const helpBarRows = showHelp ? 2 : 0;
-  const commandBarRows = commandBarVisible ? 3 : 0;
+  const commandBarRows = commandBarVisible ? 4 : 0;
   const footerRows = (searchBarVisible ? 1 : 0) + commandBarRows + (diagnostics.length > 0 ? 1 : 0);
   const contentHeight = Math.max(1, terminalRows - 2 - helpBarRows - footerRows);
 

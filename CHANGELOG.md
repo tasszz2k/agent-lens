@@ -4,6 +4,12 @@ All notable changes to AgentLens are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-07
+
+### Added
+
+- **`:q` quit command**: type `:q` in the command bar to exit the application, alongside `:scan` and `:cost` page navigation.
+
 ## [0.5.0] - 2026-03-07
 
 ### Added
