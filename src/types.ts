@@ -3,6 +3,8 @@ export interface AgentLensConfig {
   disabledTools?: string[];
   disabledCategories?: string[];
   cursorSessionToken?: string;
+  cursorTeamId?: number;
+  cursorEmail?: string;
 }
 
 export interface ProjectScan {
@@ -101,6 +103,25 @@ export interface ToolCostSummary {
   models: ModelCostBreakdown[];
   period: string;
   error?: string;
+  onDemand?: OnDemandUsage;
+  teamOnDemand?: OnDemandUsage;
+  leaderboard?: CursorLeaderboard;
+}
+
+export interface OnDemandUsage {
+  enabled: boolean;
+  usedCents: number;
+  limitCents: number;
+}
+
+export interface CursorLeaderboard {
+  rank: number;
+  totalUsers: number;
+  totalDiffAccepts: number;
+  composerLinesAccepted: number;
+  composerLinesSuggested: number;
+  acceptanceRatio: number;
+  favoriteModel: string;
 }
 
 export interface ModelCostBreakdown {

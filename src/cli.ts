@@ -3,7 +3,7 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { scanAll, scanForWhereCommand } from './scan.js';
-import { loadConfig, saveConfig, addRoot, removeRoot, setToolEnabled as configSetToolEnabled, setCategoryEnabled as configSetCategoryEnabled, setCursorToken, LABEL_CATEGORIES, discoverProjects, getConfigPath } from './config.js';
+import { loadConfig, saveConfig, addRoot, removeRoot, setToolEnabled as configSetToolEnabled, setCategoryEnabled as configSetCategoryEnabled, setCursorToken, setCursorTeamId, LABEL_CATEGORIES, discoverProjects, getConfigPath } from './config.js';
 import { runChecks } from './troubleshoot.js';
 import { analyzeWithClaude, isClaudeAvailable } from './ai.js';
 import { formatDiagnosticsForAI } from './troubleshoot.js';
@@ -235,6 +235,8 @@ const configCmd = program
   .option('--list-roots', 'List configured root directories')
   .option('--set-cursor-token <token>', 'Set Cursor session token for cost tracking')
   .option('--clear-cursor-token', 'Remove stored Cursor session token')
+  .option('--set-cursor-team-id <id>', 'Set Cursor team ID for leaderboard (from cursor.com dashboard)')
+  .option('--clear-cursor-team-id', 'Remove Cursor team ID')
   .action(async (opts) => {
     if (opts.setCursorToken) {
       await setCursorToken(opts.setCursorToken);
@@ -246,6 +248,25 @@ const configCmd = program
     if (opts.clearCursorToken) {
       await setCursorToken(undefined);
       console.log('Cursor session token removed.');
+      return;
+    }
+
+    if (opts.setCursorTeamId) {
+      const teamId = parseInt(opts.setCursorTeamId, 10);
+      if (!Number.isInteger(teamId) || teamId <= 0) {
+        console.error('Invalid team ID. Must be a positive integer.');
+        console.error('Find it at: cursor.com/dashboard > DevTools (F12) > Application > Cookies > team_id');
+        return;
+      }
+      await setCursorTeamId(teamId);
+      console.log(`Cursor team ID saved: ${teamId}`);
+      console.log('Email will be auto-detected from Cursor. Leaderboard will appear on the cost page.');
+      return;
+    }
+
+    if (opts.clearCursorTeamId) {
+      await setCursorTeamId(undefined);
+      console.log('Cursor team ID removed.');
       return;
     }
 

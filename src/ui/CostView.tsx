@@ -115,6 +115,36 @@ function buildLines(report: CostReport, width: number): LineItem[] {
       });
     }
 
+    if (tool.onDemand?.enabled) {
+      const odUsed = (tool.onDemand!.usedCents / 100).toFixed(2);
+      const odLimit = (tool.onDemand!.limitCents / 100).toFixed(2);
+      const odLine = `  On-Demand: $${odUsed} / $${odLimit}`;
+      lines.push({
+        element: (
+          <Text key={`ondemand-${tool.tool}`}>
+            {odLine}
+          </Text>
+        ),
+      });
+      const odBarWidth = 20;
+      const odRatio = tool.onDemand!.limitCents > 0
+        ? tool.onDemand!.usedCents / tool.onDemand!.limitCents
+        : 0;
+      const odFilled = Math.round(odRatio * odBarWidth);
+      const odBar = '\u2588'.repeat(odFilled) + '\u2591'.repeat(odBarWidth - odFilled);
+      const odPct = (odRatio * 100).toFixed(1);
+      lines.push({
+        element: (
+          <Text key={`ondemand-bar-${tool.tool}`}>
+            {'  '}
+            <Text color="green">{odBar.slice(0, odFilled)}</Text>
+            <Text dimColor>{odBar.slice(odFilled)}</Text>
+            {` $${odUsed} / $${odLimit} (${odPct}%)`}
+          </Text>
+        ),
+      });
+    }
+
     lines.push({ element: <Text key={`sp-${tool.tool}`}>{' '}</Text> });
 
     const colModel = 20;
@@ -199,7 +229,49 @@ function buildLines(report: CostReport, width: number): LineItem[] {
         ),
       });
     }
+
     lines.push({ element: <Text key={`sp2-${tool.tool}`}>{' '}</Text> });
+
+    if (tool.leaderboard) {
+      const lb = tool.leaderboard;
+      const labelW = 24;
+      const rankStr = `#${lb.rank.toLocaleString()} / ${lb.totalUsers.toLocaleString()}`;
+      lines.push({
+        element: (
+          <Text key={`lb-${tool.tool}-header`}>
+            <Text dimColor>{'  Leaderboard'}</Text>
+            <Text color="cyan">{padLeft(rankStr, width - 13)}</Text>
+          </Text>
+        ),
+      });
+      lines.push({
+        element: (
+          <Text key={`lb-${tool.tool}-diffs`}>
+            <Text dimColor>{pad('  Accepted Diffs', labelW)}</Text>
+            <Text color="white">{lb.totalDiffAccepts.toLocaleString()}</Text>
+          </Text>
+        ),
+      });
+      const accPct = (lb.acceptanceRatio * 100).toFixed(1);
+      const agentLine = `${lb.composerLinesAccepted.toLocaleString()} / ${lb.composerLinesSuggested.toLocaleString()} (${accPct}%)`;
+      lines.push({
+        element: (
+          <Text key={`lb-${tool.tool}-agent`}>
+            <Text dimColor>{pad('  Agent Lines', labelW)}</Text>
+            <Text color="white">{agentLine}</Text>
+          </Text>
+        ),
+      });
+      lines.push({
+        element: (
+          <Text key={`lb-${tool.tool}-model`}>
+            <Text dimColor>{pad('  Favorite Model', labelW)}</Text>
+            <Text color="yellow">{lb.favoriteModel}</Text>
+          </Text>
+        ),
+      });
+      lines.push({ element: <Text key={`lb-${tool.tool}-sp`}>{' '}</Text> });
+    }
   }
 
   lines.push({
@@ -236,7 +308,8 @@ export default function CostView({
 
   const lines = useMemo(() => {
     if (!report) return [];
-    return buildLines(report, width);
+    const contentWidth = width - 4;
+    return buildLines(report, contentWidth);
   }, [report, width]);
 
   const borderRows = 4;

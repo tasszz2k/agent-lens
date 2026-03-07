@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { CostReport, ToolCostSummary, ModelCostBreakdown } from './types.js';
+import type { CostReport, ToolCostSummary, ModelCostBreakdown, OnDemandUsage, CursorLeaderboard } from './types.js';
 import { loadConfig } from './config.js';
 
 const execFileAsync = promisify(execFile);
@@ -187,7 +187,163 @@ function normalizeCursorTierName(key: string): string {
   return CURSOR_TIER_NAMES[key] ?? key;
 }
 
+async function fetchCursorUsageSummary(token: string): Promise<{
+  planType: string | undefined;
+  onDemand: OnDemandUsage | undefined;
+  teamOnDemand: OnDemandUsage | undefined;
+} | null> {
+  try {
+    const res = await fetch('https://cursor.com/api/usage-summary', {
+      headers: { Cookie: `WorkosCursorSessionToken=${token}` },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>;
+    let planType: string | undefined;
+    const mt = data.membershipType;
+    if (typeof mt === 'string' && mt !== 'free') planType = mt;
+
+    let onDemand: OnDemandUsage | undefined;
+    const ind = data.individualUsage as Record<string, unknown> | undefined;
+    const indOd = ind?.onDemand as Record<string, unknown> | undefined;
+    if (indOd && typeof indOd.enabled === 'boolean') {
+      onDemand = {
+        enabled: indOd.enabled,
+        usedCents: typeof indOd.used === 'number' ? indOd.used : 0,
+        limitCents: typeof indOd.limit === 'number' ? indOd.limit : 0,
+      };
+    }
+
+    let teamOnDemand: OnDemandUsage | undefined;
+    const team = data.teamUsage as Record<string, unknown> | undefined;
+    const teamOd = team?.onDemand as Record<string, unknown> | undefined;
+    if (teamOd && typeof teamOd.enabled === 'boolean') {
+      teamOnDemand = {
+        enabled: teamOd.enabled,
+        usedCents: typeof teamOd.used === 'number' ? teamOd.used : 0,
+        limitCents: typeof teamOd.limit === 'number' ? teamOd.limit : 0,
+      };
+    }
+
+    return { planType, onDemand, teamOnDemand };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCursorLeaderboard(
+  token: string,
+  teamId: number,
+  email: string
+): Promise<CursorLeaderboard | null> {
+  try {
+    const now = new Date();
+    const startDate = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endDate = localDateStr(now);
+
+    const params = new URLSearchParams({
+      startDate,
+      endDate,
+      pageSize: '10',
+      teamId: String(teamId),
+      user: email,
+      leaderboardSortBy: 'composer_lines',
+    });
+    const url = `https://cursor.com/api/v2/analytics/team/leaderboard?${params.toString()}`;
+    const cookie = buildCursorCookie(token, { team_id: teamId });
+
+    const res = await fetch(url, {
+      headers: { Cookie: cookie, Origin: 'https://cursor.com' },
+    });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as Record<string, unknown>;
+    const composerLeaderboard = data.composer_leaderboard as Record<string, unknown> | undefined;
+    if (!composerLeaderboard) return null;
+
+    const entries = composerLeaderboard.data as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(entries)) return null;
+
+    const userEntry = entries.find((e) => e.email === email);
+    if (!userEntry) return null;
+
+    const totalUsers = typeof composerLeaderboard.total_users === 'number'
+      ? composerLeaderboard.total_users
+      : 0;
+
+    return {
+      rank: typeof userEntry.rank === 'number' ? userEntry.rank : 0,
+      totalUsers,
+      totalDiffAccepts: typeof userEntry.total_diff_accepts === 'number' ? userEntry.total_diff_accepts : 0,
+      composerLinesAccepted: typeof userEntry.total_composer_lines_accepted === 'number'
+        ? userEntry.total_composer_lines_accepted
+        : 0,
+      composerLinesSuggested: typeof userEntry.total_composer_lines_suggested === 'number'
+        ? userEntry.total_composer_lines_suggested
+        : 0,
+      acceptanceRatio: typeof userEntry.composer_line_acceptance_ratio === 'number'
+        ? userEntry.composer_line_acceptance_ratio
+        : 0,
+      favoriteModel: typeof userEntry.favorite_model === 'string' ? userEntry.favorite_model : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
 const CURSOR_DB_PATH = path.join(os.homedir(), 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb');
+
+async function readVscdbKey(key: string): Promise<string | null> {
+  try {
+    await fs.access(CURSOR_DB_PATH);
+  } catch {
+    return null;
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      'sqlite3',
+      [CURSOR_DB_PATH, `SELECT value FROM ItemTable WHERE key = '${key}';`],
+      { timeout: 5000 }
+    );
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeToken(token: string): string {
+  return token.includes('%3A%3A') ? decodeURIComponent(token) : token;
+}
+
+function extractWorkosId(token: string): string | undefined {
+  const t = decodeToken(token);
+  if (t.includes('::')) {
+    const id = t.split('::')[0]?.trim();
+    return id || undefined;
+  }
+  try {
+    const parts = t.split('.');
+    if (parts.length !== 3) return undefined;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+    if (typeof payload.sub === 'string' && payload.sub.includes('|')) {
+      return payload.sub.split('|')[1] || undefined;
+    }
+  } catch {
+    // unable to decode JWT
+  }
+  return undefined;
+}
+
+function buildCursorCookie(token: string, extras?: Record<string, string | number>): string {
+  const t = decodeToken(token);
+  const workosId = extractWorkosId(t);
+  const fullToken = t.includes('::') ? t : workosId ? `${workosId}::${t}` : t;
+  const parts = [`WorkosCursorSessionToken=${fullToken}`];
+  if (workosId) parts.push(`workos_id=${workosId}`);
+  if (extras) {
+    for (const [k, v] of Object.entries(extras)) parts.push(`${k}=${v}`);
+  }
+  return parts.join('; ');
+}
 
 async function getCursorSessionToken(): Promise<string | null> {
   try {
@@ -197,26 +353,38 @@ async function getCursorSessionToken(): Promise<string | null> {
     // config read failed, continue to fallback
   }
 
-  try {
-    await fs.access(CURSOR_DB_PATH);
-  } catch {
-    return null;
-  }
-  try {
-    const { stdout } = await execFileAsync(
-      'sqlite3',
-      [CURSOR_DB_PATH, "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken';"],
-      { timeout: 5000 }
-    );
-    const token = stdout.trim();
-    if (token) return token;
+  return (
+    (await readVscdbKey('cursorAuth/accessToken')) ??
+    (await readVscdbKey('WorkosCursorSessionToken')) ??
+    null
+  );
+}
 
-    const { stdout: fallback } = await execFileAsync(
-      'sqlite3',
-      [CURSOR_DB_PATH, "SELECT value FROM ItemTable WHERE key = 'WorkosCursorSessionToken';"],
-      { timeout: 5000 }
-    );
-    return fallback.trim() || null;
+async function getCursorEmail(): Promise<string | null> {
+  try {
+    const config = await loadConfig();
+    if (config.cursorEmail) return config.cursorEmail;
+  } catch {
+    // ignore
+  }
+  return readVscdbKey('cursorAuth/cachedEmail');
+}
+
+async function fetchCursorTeamId(token: string): Promise<number | null> {
+  try {
+    const res = await fetch('https://cursor.com/api/dashboard/teams', {
+      method: 'POST',
+      headers: {
+        Cookie: buildCursorCookie(token),
+        'Content-Type': 'application/json',
+        Origin: 'https://cursor.com',
+      },
+      body: '{}',
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { teams?: Array<{ id?: number }> };
+    const first = data.teams?.[0];
+    return typeof first?.id === 'number' ? first.id : null;
   } catch {
     return null;
   }
@@ -294,17 +462,38 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
     models.sort((a, b) => b.inputTokens - a.inputTokens);
 
     let planType: string | undefined;
-    try {
-      const stripeRes = await fetch('https://cursor.com/api/auth/stripe', {
-        headers: { Cookie: `WorkosCursorSessionToken=${token}` },
-      });
-      if (stripeRes.ok) {
-        const stripe = (await stripeRes.json()) as Record<string, unknown>;
-        const mt = stripe.membershipType;
-        if (typeof mt === 'string' && mt !== 'free') planType = mt;
-      }
-    } catch {
-      // non-critical
+    let onDemand: OnDemandUsage | undefined;
+    let teamOnDemand: OnDemandUsage | undefined;
+    let leaderboard: CursorLeaderboard | undefined;
+
+    const [emailResult, configResult, usageSummaryResult] = await Promise.all([
+      getCursorEmail(),
+      loadConfig().catch(() => ({ cursorTeamId: undefined } as { cursorTeamId?: number })),
+      fetchCursorUsageSummary(token),
+    ]);
+
+    const email = emailResult;
+    let teamId = configResult.cursorTeamId ?? null;
+    if (teamId == null && email) {
+      teamId = await fetchCursorTeamId(token);
+    }
+
+    let leaderboardResult: PromiseSettledResult<CursorLeaderboard | null>;
+    if (teamId != null && email) {
+      [leaderboardResult] = await Promise.allSettled([
+        fetchCursorLeaderboard(token, teamId, email),
+      ]);
+    } else {
+      leaderboardResult = { status: 'fulfilled', value: null };
+    }
+
+    if (usageSummaryResult) {
+      planType = usageSummaryResult.planType;
+      onDemand = usageSummaryResult.onDemand;
+      teamOnDemand = usageSummaryResult.teamOnDemand;
+    }
+    if (leaderboardResult.status === 'fulfilled' && leaderboardResult.value) {
+      leaderboard = leaderboardResult.value;
     }
 
     return {
@@ -315,6 +504,9 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
       totalRequests,
       maxRequests,
       planType,
+      onDemand,
+      teamOnDemand,
+      leaderboard,
       models,
       period,
     };

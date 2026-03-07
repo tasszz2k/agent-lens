@@ -466,7 +466,7 @@ export default function App({
   }, []);
 
   useEffect(() => {
-    if (page === 'cost' && !costReport && !costLoading) {
+    if (page === 'cost' && !costLoading) {
       handleFetchCosts();
     }
   }, [page]);

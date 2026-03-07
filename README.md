@@ -204,8 +204,10 @@ agentlens config tools          Manage tool/category visibility filters
 | `--add-root <path>` | Add a workspace root directory |
 | `--remove-root <path>` | Remove a workspace root directory |
 | `--list-roots` | List configured root directories |
-| `--set-cursor-token <token>` | Set Cursor session token for cost tracking |
+| `--set-cursor-token <token>` | Set Cursor session token (auto-detected by default) |
 | `--clear-cursor-token` | Remove stored Cursor session token |
+| `--set-cursor-team-id <id>` | Override Cursor team ID for leaderboard (auto-detected by default) |
+| `--clear-cursor-team-id` | Remove stored Cursor team ID |
 
 ### Examples
 
@@ -250,24 +252,22 @@ No setup required -- AgentLens reads the logs directly from disk.
 
 ### Cursor
 
-Usage data (premium request counts and token totals) is fetched from the Cursor API. This requires a session token:
+Usage data is fetched from the Cursor API. **No setup is required** -- AgentLens auto-detects the session token, email, and team ID from Cursor's local database and APIs.
 
-1. Open [cursor.com](https://cursor.com) in your browser and sign in
-2. Open DevTools (`F12`) > **Application** > **Cookies** > `cursor.com`
-3. Copy the value of the `WorkosCursorSessionToken` cookie
-4. Set it in AgentLens:
+The Cursor dashboard shows:
 
-```bash
-agentlens config --set-cursor-token <paste-token-here>
-```
+- **Plan type** and premium request usage against your plan limit (e.g., 505/500) with a progress bar
+- **On-demand usage** showing individual spend against your limit (e.g., $1.20 / $250.00)
+- **Per-model breakdown** of tokens and request counts
+- **Leaderboard insights** (if on a team plan): your rank, accepted diffs, agent lines with acceptance ratio, and favorite model
 
-The token is stored in `~/.config/agentlens/config.json`. To remove it:
+If auto-detection fails (e.g., Cursor is not installed on this machine), you can manually provide a session token:
 
 ```bash
-agentlens config --clear-cursor-token
+agentlens config --set-cursor-token <token>
 ```
 
-The Cursor dashboard shows premium request usage against your plan limit (e.g., 450/500), plan type, and per-model token/request breakdown. Dollar cost is not available from the Cursor API.
+To get the token: open [cursor.com](https://cursor.com) > DevTools (`F12`) > Application > Cookies > copy `WorkosCursorSessionToken`. The token is stored in `~/.config/agentlens/config.json`.
 
 ## What Gets Scanned
 

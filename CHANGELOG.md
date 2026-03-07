@@ -4,6 +4,20 @@ All notable changes to AgentLens are documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-07
+
+### Added
+
+- **Cursor leaderboard insights**: the cost dashboard now shows your team leaderboard rank, accepted diffs, agent lines (accepted / suggested with acceptance ratio), and favorite model, fetched from the Cursor analytics API.
+- **Cursor on-demand usage**: displays individual on-demand spend against your limit with a progress bar (e.g., `$1.20 / $250.00`).
+- **Zero-config Cursor setup**: session token, email, and team ID are now auto-detected from Cursor's local database and APIs. Manual `--set-cursor-token` is no longer required for most users.
+- **Auto-refresh on page navigation**: cost data is automatically refreshed each time you navigate to the Cost page, removing the need to press `r` manually.
+
+### Fixed
+
+- **Cost view content overflow**: right-aligned text (request counts, leaderboard rank) no longer wraps to the next line. The content width now correctly accounts for the box border and padding.
+- **URL-encoded session tokens**: tokens stored with `%3A%3A` encoding are now decoded properly, fixing authentication failures with the leaderboard and team APIs.
+
 ## [0.3.0] - 2026-03-07
 
 ### Added

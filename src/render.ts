@@ -321,6 +321,13 @@ export function renderCostStatic(report: CostReport): string {
       lines.push(`  ${bar} ${tool.totalRequests} / ${tool.maxRequests} premium requests (${pct}%)`);
     }
 
+    if (tool.onDemand?.enabled) {
+      const used = (tool.onDemand.usedCents / 100).toFixed(2);
+      const limit = (tool.onDemand.limitCents / 100).toFixed(2);
+      const onDemandStr = `  On-Demand: ${chalk.green('$' + used)} / ${chalk.green('$' + limit)}`;
+      lines.push(onDemandStr);
+    }
+
     lines.push('');
 
     if (tool.models.length > 0) {
@@ -352,6 +359,18 @@ export function renderCostStatic(report: CostReport): string {
         lines.push('');
         lines.push(chalk.dim(`  Total Tokens: ${formatTokenCount(tool.totalInputTokens)} in / ${formatTokenCount(tool.totalOutputTokens)} out`));
       }
+    }
+
+    if (tool.leaderboard) {
+      const lb = tool.leaderboard;
+      const rankLabel = chalk.dim('  Leaderboard');
+      const rankVal = chalk.cyan(`#${lb.rank.toLocaleString()} / ${lb.totalUsers.toLocaleString()}`);
+      lines.push(rankLabel + ' '.repeat(Math.max(1, 30 - 14)) + rankVal);
+      lines.push(chalk.dim('  Accepted Diffs') + '          ' + lb.totalDiffAccepts.toLocaleString());
+      const pct = (lb.acceptanceRatio * 100).toFixed(1);
+      lines.push(chalk.dim('  Agent Lines') + '             ' + lb.composerLinesAccepted.toLocaleString() + ' / ' + lb.composerLinesSuggested.toLocaleString() + ` (${pct}%)`);
+      lines.push(chalk.dim('  Favorite Model') + '          ' + chalk.yellow(lb.favoriteModel));
+      lines.push('');
     }
 
     lines.push('');
