@@ -4,6 +4,12 @@ All notable changes to AgentLens are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-07
+
+### Fixed
+
+- **Total cost missing Cursor on-demand spend**: the TOTAL line in the cost dashboard now includes Cursor's on-demand usage. Previously, Cursor's `totalCostUsd` was hardcoded to `0`, so on-demand spending was displayed per-tool but excluded from the total.
+
 ## [0.5.1] - 2026-03-07
 
 ### Added

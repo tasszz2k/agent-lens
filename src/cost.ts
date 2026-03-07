@@ -496,9 +496,11 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
       leaderboard = leaderboardResult.value;
     }
 
+    const cursorCostUsd = onDemand?.enabled ? onDemand.usedCents / 100 : 0;
+
     return {
       tool: 'Cursor',
-      totalCostUsd: 0,
+      totalCostUsd: cursorCostUsd,
       totalInputTokens: totalTokens,
       totalOutputTokens: 0,
       totalRequests,
