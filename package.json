@@ -4,7 +4,8 @@
   "description": "CLI tool to scan agent configuration, track usage costs, and inspect skills/rules/MCP across Cursor, Claude Code, Codex, and Copilot",
   "type": "module",
   "bin": {
-    "agentlens": "dist/cli.js"
+    "agentlens": "dist/cli.js",
+    "agentlens-dev": "dist/cli.js"
   },
   "files": [
     "dist",
