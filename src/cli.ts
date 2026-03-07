@@ -73,6 +73,7 @@ program
           initialDisabledCategories: config.disabledCategories,
           configRoots: config.roots,
           hasCursorToken: !!config.cursorSessionToken,
+          version,
         })
       );
       instance.waitUntilExit().then(() => {
@@ -132,6 +133,7 @@ program
           initialPage: 'cost',
           configRoots: config.roots,
           hasCursorToken: !!config.cursorSessionToken,
+          version,
         })
       );
       instance.waitUntilExit().then(() => {

@@ -328,6 +328,18 @@ interface AppProps {
   initialPage?: 'scan' | 'cost';
   configRoots?: string[];
   hasCursorToken?: boolean;
+  version?: string;
+}
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] ?? 0;
+    const nb = pb[i] ?? 0;
+    if (na !== nb) return na - nb;
+  }
+  return 0;
 }
 
 export default function App({
@@ -339,6 +351,7 @@ export default function App({
   initialPage,
   configRoots,
   hasCursorToken,
+  version,
 }: AppProps) {
   const { exit } = useApp();
   const [view, setView] = useState<'tree' | 'detail' | 'settings'>('tree');
@@ -358,6 +371,7 @@ export default function App({
   const [commandBarActive, setCommandBarActive] = useState(false);
   const [costReport, setCostReport] = useState<CostReport | null>(null);
   const [costLoading, setCostLoading] = useState(false);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
 
   useEffect(() => {
     const onResize = () => {
@@ -369,6 +383,19 @@ export default function App({
       process.stdout?.off('resize', onResize);
     };
   }, []);
+
+  useEffect(() => {
+    if (!version) return;
+    fetch('https://registry.npmjs.org/@tasszz2k/agentlens/latest')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Record<string, unknown> | null) => {
+        const latest = data?.version;
+        if (typeof latest === 'string' && compareVersions(latest, version) > 0) {
+          setLatestVersion(latest);
+        }
+      })
+      .catch(() => {});
+  }, [version]);
 
   const effectiveScanResult = useMemo(
     () => filterByTools(scanResult, disabledTools, disabledCategories),
@@ -530,8 +557,16 @@ export default function App({
   return (
     <Box flexDirection="column" width="100%" height={terminalRows} overflow="hidden">
       <Box justifyContent="space-between" width={terminalCols}>
-        <Text>{theme.title('AGENTLENS')}{theme.title(' > ' + page.charAt(0).toUpperCase() + page.slice(1))}</Text>
-        <Text dimColor>{'<?> help'}</Text>
+        <Text>
+          {theme.title('AGENTLENS')}
+          {version ? <Text dimColor>{' v' + version}</Text> : null}
+          {theme.title(' > ' + page.charAt(0).toUpperCase() + page.slice(1))}
+        </Text>
+        {latestVersion ? (
+          <Text color="yellow">{'v' + latestVersion + ' available: npm i -g @tasszz2k/agentlens'}</Text>
+        ) : (
+          <Text dimColor>{'<?> help'}</Text>
+        )}
       </Box>
       {showHelp && <HelpBar view={page === 'cost' ? 'cost' : view} width={terminalCols} />}
       <Text dimColor>{'─'.repeat(40)}</Text>

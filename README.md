@@ -113,6 +113,10 @@ OTHER PROJECTS  (5 discovered)
 # From npm (recommended)
 npm install -g @tasszz2k/agentlens
 
+# Or via Homebrew
+brew tap tasszz2k/tap
+brew install agentlens
+
 # Or run directly with npx
 npx @tasszz2k/agentlens
 

@@ -4,6 +4,13 @@ All notable changes to AgentLens are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-07
+
+### Added
+
+- **Homebrew distribution**: `brew tap tasszz2k/tap && brew install agentlens`. The GitHub Actions release workflow now automatically publishes a Homebrew formula to the `tasszz2k/homebrew-tap` repo after each npm release.
+- **Version display and update check**: the TUI header now shows the current version (e.g., `AGENTLENS v0.5.0 > Cost`). On startup, it checks the npm registry for newer versions and displays an update banner with install instructions when available.
+
 ## [0.4.0] - 2026-03-07
 
 ### Added
