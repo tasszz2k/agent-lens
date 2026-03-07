@@ -1,6 +1,10 @@
 # AgentLens
 
-CLI tool that scans and inspects agent configuration across AI coding tools.
+[![npm version](https://img.shields.io/npm/v/@tasszz2k/agentlens)](https://www.npmjs.com/package/@tasszz2k/agentlens)
+[![license](https://img.shields.io/npm/l/@tasszz2k/agentlens)](LICENSE)
+
+
+CLI tool to scan agent configuration, track usage costs, and inspects agent configuration across AI coding tools.
 
 AgentLens discovers skills, rules, commands, context files, hooks, and MCP server configs for **Cursor**, **Claude Code**, **Codex**, **GitHub Copilot**, and multi-agent setups (`AGENTS.md`). It scans both global (`~/.cursor`, `~/.claude`, etc.) and project-level locations, then displays an interactive tree or static text map. With configured workspace roots, it also discovers and scans all projects across your workspace.
 
@@ -106,9 +110,17 @@ OTHER PROJECTS  (5 discovered)
 ## Install
 
 ```bash
-npm install
-npm run build
-npm link        # optional, makes `agentlens` available globally
+# From npm (recommended)
+npm install -g @tasszz2k/agentlens
+
+# Or run directly with npx
+npx @tasszz2k/agentlens
+
+# Or from source
+git clone https://github.com/tasszz2k/agent-lens.git
+cd agent-lens
+npm install && npm run build
+npm link
 ```
 
 ## Quick Start
@@ -387,4 +399,4 @@ src/
 
 ## License
 
-MIT
+[MIT](LICENSE)

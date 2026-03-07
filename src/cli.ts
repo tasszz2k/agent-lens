@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { scanAll, scanForWhereCommand } from './scan.js';
 import { loadConfig, saveConfig, addRoot, removeRoot, setToolEnabled as configSetToolEnabled, setCategoryEnabled as configSetCategoryEnabled, setCursorToken, LABEL_CATEGORIES, discoverProjects, getConfigPath } from './config.js';
@@ -9,12 +10,15 @@ import { formatDiagnosticsForAI } from './troubleshoot.js';
 import { renderStatic, renderDiagnostics, renderWhereResult, renderJson } from './render.js';
 import type { Diagnostic } from './types.js';
 
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
+
 const program = new Command();
 
 program
   .name('agentlens')
   .description('Analyze agent configuration files across AI coding tools')
-  .version('0.1.0');
+  .version(version);
 
 async function runDiagnosticsAndAI(
   diagnostics: Diagnostic[],

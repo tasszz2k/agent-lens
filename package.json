@@ -1,15 +1,22 @@
 {
-  "name": "agentlens",
-  "version": "0.1.0",
-  "description": "CLI tool to analyze agent configuration files across AI coding tools",
+  "name": "@tasszz2k/agentlens",
+  "version": "0.3.0",
+  "description": "CLI tool to scan agent configuration, track usage costs, and inspect skills/rules/MCP across Cursor, Claude Code, Codex, and Copilot",
   "type": "module",
   "bin": {
-    "agentlens": "./dist/cli.js"
+    "agentlens": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "ai",
@@ -21,6 +28,15 @@
     "copilot"
   ],
   "license": "MIT",
+  "author": "Tass Dinh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tasszz2k/agent-lens.git"
+  },
+  "homepage": "https://github.com/tasszz2k/agent-lens",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "chalk": "^5.6.2",
     "cli-truncate": "^5.2.0",
