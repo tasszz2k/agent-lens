@@ -4,6 +4,10 @@ All notable changes to AgentLens are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Automated releases with release-please**: replaced manual tag-push release workflow with `googleapis/release-please-action@v4`. Pushes to `main` now auto-create a release PR that bumps `package.json` version and updates the changelog. Merging the PR triggers npm publish and Homebrew tap update.
+
 ## [0.5.2] - 2026-03-07
 
 ### Fixed

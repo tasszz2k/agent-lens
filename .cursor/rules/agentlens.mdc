@@ -61,6 +61,13 @@ CLI tool that scans agent configuration across AI coding tools (Cursor, Claude C
 4. Add key bindings to `src/ui/HelpBar.tsx` (new `*Keys` array and condition)
 5. Update `commandBarRows` in App.tsx if the page count changes
 
+## Releasing
+
+- Releases are automated via `googleapis/release-please-action@v4` in `.github/workflows/release.yml`
+- On every push to `main`, release-please opens/updates a release PR that bumps `package.json` version and prepends to `CHANGELOG.md` based on conventional commits (`feat:`, `fix:`, `chore:`, etc.)
+- Merging the release PR creates a GitHub release + tag, which triggers npm publish and Homebrew tap update
+- Config files: `release-please-config.json` (package settings), `.release-please-manifest.json` (current version)
+
 ## Conventions
 
 - No emoji in code
