@@ -2,6 +2,25 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.3](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.2...agentlens-v0.5.3) (2026-03-09)
+
+
+### Features
+
+* add :q quit command to command bar ([be680ff](https://github.com/tasszz2k/agent-lens/commit/be680ff5d9e08d4da55879f2687c75e15c83fcef))
+* add agentlens-dev CLI command for development usage ([4e01ebb](https://github.com/tasszz2k/agent-lens/commit/4e01ebb2437548e2ca3168bc33619de8732e5a6a))
+* add cost dashboard and page navigation ([c6d2481](https://github.com/tasszz2k/agent-lens/commit/c6d248173cac8eed21249c0d8b3afbf4082883b3))
+* add Homebrew tap publishing and version update check ([1c7e1ec](https://github.com/tasszz2k/agent-lens/commit/1c7e1ecca088a940e701e3fe4c3dff800fa4d8a0))
+* **cost:** add Cursor leaderboard, on-demand usage, and zero-config auto-detection ([3a1d301](https://github.com/tasszz2k/agent-lens/commit/3a1d30193453250585c0844ee0efe01979e788b5))
+* initial commit ([ab53cce](https://github.com/tasszz2k/agent-lens/commit/ab53cce076e74cb0c96cdf92aa083cf8705c17ed))
+* **ui:** add CURRENT scope, settings view, and tool/category filters ([c720462](https://github.com/tasszz2k/agent-lens/commit/c720462b264eb07ad9327242bfe3d87dfd072fc6))
+* **ui:** add vim navigation, help bar, and linked entry browsing ([7c1914d](https://github.com/tasszz2k/agent-lens/commit/7c1914d9fd365df449152e3ae7aadbc4482428d6))
+
+
+### Bug Fixes
+
+* include Cursor on-demand spend in total cost ([7c93f7c](https://github.com/tasszz2k/agent-lens/commit/7c93f7ce22837c5ebc0b537af32a090f89928def))
+
 ## [Unreleased]
 
 ### Changed
