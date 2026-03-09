@@ -2,6 +2,29 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.5](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.4...agentlens-v0.5.5) (2026-03-09)
+
+
+### Features
+
+* add :q quit command to command bar ([be680ff](https://github.com/tasszz2k/agent-lens/commit/be680ff5d9e08d4da55879f2687c75e15c83fcef))
+* add agentlens-dev CLI command for development usage ([4e01ebb](https://github.com/tasszz2k/agent-lens/commit/4e01ebb2437548e2ca3168bc33619de8732e5a6a))
+* add cost dashboard and page navigation ([c6d2481](https://github.com/tasszz2k/agent-lens/commit/c6d248173cac8eed21249c0d8b3afbf4082883b3))
+* add Homebrew tap publishing and version update check ([1c7e1ec](https://github.com/tasszz2k/agent-lens/commit/1c7e1ecca088a940e701e3fe4c3dff800fa4d8a0))
+* **cost:** add Cursor leaderboard, on-demand usage, and zero-config auto-detection ([3a1d301](https://github.com/tasszz2k/agent-lens/commit/3a1d30193453250585c0844ee0efe01979e788b5))
+* initial commit ([ab53cce](https://github.com/tasszz2k/agent-lens/commit/ab53cce076e74cb0c96cdf92aa083cf8705c17ed))
+* **ui:** add CURRENT scope, settings view, and tool/category filters ([c720462](https://github.com/tasszz2k/agent-lens/commit/c720462b264eb07ad9327242bfe3d87dfd072fc6))
+* **ui:** add vim navigation, help bar, and linked entry browsing ([7c1914d](https://github.com/tasszz2k/agent-lens/commit/7c1914d9fd365df449152e3ae7aadbc4482428d6))
+
+
+### Bug Fixes
+
+* **ci:** checkout release tag for npm publish ([ecb9bef](https://github.com/tasszz2k/agent-lens/commit/ecb9befe0922d13278381a2fcf655742c9727c64))
+* **ci:** query release PR by branch name to avoid label race condition ([853d626](https://github.com/tasszz2k/agent-lens/commit/853d62651f773aa16c5c6ad386ea0f5a55dd0784))
+* **ci:** skip auto-merge when release already created in same run ([7b92fcd](https://github.com/tasszz2k/agent-lens/commit/7b92fcd9854df4e76643e69e577ba54e189a08e9))
+* **ci:** use if-block for auto-merge to avoid set -e failure ([1adcec9](https://github.com/tasszz2k/agent-lens/commit/1adcec9a262e7281e00d1356dc453dd0d1059631))
+* include Cursor on-demand spend in total cost ([7c93f7c](https://github.com/tasszz2k/agent-lens/commit/7c93f7ce22837c5ebc0b537af32a090f89928def))
+
 ## [0.5.4](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.3...agentlens-v0.5.4) (2026-03-09)
 
 
