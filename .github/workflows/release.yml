@@ -45,6 +45,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-node@v4
         with:
