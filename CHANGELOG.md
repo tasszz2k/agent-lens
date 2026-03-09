@@ -2,6 +2,13 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.4](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.3...agentlens-v0.5.4) (2026-03-09)
+
+
+### Bug Fixes
+
+* **ci:** checkout release tag for npm publish ([ecb9bef](https://github.com/tasszz2k/agent-lens/commit/ecb9befe0922d13278381a2fcf655742c9727c64))
+
 ## [0.5.3](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.2...agentlens-v0.5.3) (2026-03-09)
 
 
