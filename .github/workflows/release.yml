@@ -11,12 +11,26 @@ jobs:
       contents: write
       pull-requests: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
+      release_created: ${{ steps.release.outputs.release_created || steps.release-post-merge.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.release-post-merge.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version || steps.release-post-merge.outputs.version }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Auto-merge release PR
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --repo "${{ github.repository }}" --label "autorelease: pending" --json number -q '.[0].number')
+          [ -n "$PR" ] && gh pr merge "$PR" --squash --repo "${{ github.repository }}"
+
+      - uses: googleapis/release-please-action@v4
+        id: release-post-merge
+        if: steps.release.outputs.prs_created == 'true'
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
