@@ -2,6 +2,13 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.6](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.5...agentlens-v0.5.6) (2026-03-09)
+
+
+### Features
+
+* **scan:** add Claude Code plugin discovery and per-tool brand colors ([f7e00e4](https://github.com/tasszz2k/agent-lens/commit/f7e00e4695d2efcac64e6b55b0f53af9bf148dfd))
+
 ## [0.5.5](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.4...agentlens-v0.5.5) (2026-03-09)
 
 
