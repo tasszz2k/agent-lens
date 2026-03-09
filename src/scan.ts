@@ -192,7 +192,7 @@ async function toolConfig(
   };
 }
 
-async function findPluginSkills(dir: string, results: ToolConfig[], depth = 0): Promise<void> {
+async function findPluginSkills(dir: string, results: ToolConfig[], depth = 0, tool = 'Cursor'): Promise<void> {
   if (depth > 4) return;
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -207,10 +207,10 @@ async function findPluginSkills(dir: string, results: ToolConfig[], depth = 0): 
           : path.basename(path.dirname(full));
         const skillEntries = await scanSkillsDir(full);
         if (skillEntries.length > 0) {
-          results.push(await toolConfig('Cursor', 'Skills', full, `(plugin: ${pluginLabel})`, skillEntries));
+          results.push(await toolConfig(tool, 'Skills', full, `(plugin: ${pluginLabel})`, skillEntries));
         }
       } else {
-        await findPluginSkills(full, results, depth + 1);
+        await findPluginSkills(full, results, depth + 1, tool);
       }
     }
   } catch {
@@ -326,6 +326,12 @@ export async function scanGlobal(): Promise<ToolConfig[]> {
   try {
     const pluginsPath = path.join(home, '.cursor', 'plugins', 'cache');
     await findPluginSkills(pluginsPath, results);
+  } catch {
+  }
+
+  try {
+    const claudePluginsPath = path.join(home, '.claude', 'plugins', 'cache');
+    await findPluginSkills(claudePluginsPath, results, 0, 'Claude Code');
   } catch {
   }
 

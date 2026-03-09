@@ -4,6 +4,7 @@ import os from 'node:os';
 import type { ScanResult, ToolConfig, ConfigEntry, Diagnostic, CostReport } from './types.js';
 import type { WhereInstallation } from './scan.js';
 import { matchesDisabledCategory } from './config.js';
+import { toolColor } from './ui/theme.js';
 
 function tildify(p: string): string {
   const home = os.homedir();
@@ -37,7 +38,7 @@ function renderToolBlock(configs: ToolConfig[], tildifyPath: (p: string) => stri
 
   if (configs.length === 1 && configs[0].tool === 'Canonical' && configs[0].category === 'Skills') {
     const tc = configs[0];
-    const label = chalk.bold.white('Canonical Store');
+    const label = toolColor('Canonical')('Canonical Store');
     const basePath = dim('  ' + tildifyPath(tc.basePath) + path.sep);
     lines.push(`  ${label}${basePath}`);
     if (tc.entries.length === 0 && !tc.exists) {
@@ -59,7 +60,7 @@ function renderToolBlock(configs: ToolConfig[], tildifyPath: (p: string) => stri
     return lines.join('\n');
   }
 
-  const toolName = chalk.bold.white(configs[0].tool);
+  const toolName = toolColor(configs[0].tool)(configs[0].tool);
   lines.push(`  ${toolName}`);
   configs.forEach((tc, cfgIdx) => {
     const isLastCfg = cfgIdx === configs.length - 1;
@@ -129,7 +130,7 @@ function renderCurrentBlock(configs: ToolConfig[]): string {
         const isActuallyLast = isLastTool && ti === toolConfigs.length - 1;
         const prefix = isActuallyLast ? last : branch;
         const labelExtra = tc.label ? chalk.dim(' ' + tc.label) : '';
-        const toolLabel = chalk.bold.white(tc.tool) + labelExtra;
+        const toolLabel = toolColor(tc.tool)(tc.tool) + labelExtra;
         const basePath = dim('  ' + tildify(tc.basePath) + (tc.category === 'Context' ? '' : path.sep));
         lines.push(`${catPipe}${prefix}${toolLabel}${basePath}`);
         const toolPipe = isActuallyLast ? catPipe + '    ' : catPipe + `${dim('│')}   `;
@@ -303,7 +304,7 @@ export function renderCostStatic(report: CostReport): string {
     }
 
     const planLabel = tool.planType ? chalk.dim(` (${tool.planType})`) : '';
-    lines.push(`${chalk.bold.white(tool.tool)}${planLabel}${' '.repeat(Math.max(1, 40 - tool.tool.length - (tool.planType ? tool.planType.length + 3 : 0)))}${summaryStr}`);
+    lines.push(`${toolColor(tool.tool)(tool.tool)}${planLabel}${' '.repeat(Math.max(1, 40 - tool.tool.length - (tool.planType ? tool.planType.length + 3 : 0)))}${summaryStr}`);
 
     if (tool.error) {
       lines.push(`  ${chalk.red('Error: ' + tool.error)}`);

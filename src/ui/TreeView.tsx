@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { TreeNode } from '../types.js';
-import { theme, tree } from './theme.js';
+import { theme, tree, toolColor } from './theme.js';
 import cliTruncate from 'cli-truncate';
 
 interface TreeViewProps {
@@ -44,7 +44,7 @@ function renderNodeLine(
       else if (node.label.startsWith('GLOBAL')) mainStyle = theme.scopeGlobal;
       else mainStyle = theme.scopeProject;
       break;
-    case 'tool':           mainStyle = theme.toolName; break;
+    case 'tool':           mainStyle = toolColor(node.label); break;
     case 'category':       mainStyle = theme.category; break;
     case 'entry':
     case 'symlink-target': mainStyle = theme.toolName; break;

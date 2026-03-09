@@ -1,5 +1,22 @@
 import chalk from 'chalk';
 
+const toolColors: Record<string, (s: string) => string> = {
+  'Claude Code': chalk.bold.hex('#D97757'),
+  'Cursor': chalk.bold.hex('#00B4D8'),
+  'Codex': chalk.bold.hex('#10A37F'),
+  'Copilot': chalk.bold.hex('#2EA6FF'),
+  'Canonical': chalk.bold.white,
+  'Multi-agent': chalk.bold.blue,
+};
+
+export function toolColor(toolName: string): (s: string) => string {
+  if (toolColors[toolName]) return toolColors[toolName];
+  for (const [key, color] of Object.entries(toolColors)) {
+    if (toolName.startsWith(key + ' ')) return color;
+  }
+  return chalk.bold.white;
+}
+
 export const theme = {
   title: chalk.bold,
   scopeHeader: chalk.bold.white,
