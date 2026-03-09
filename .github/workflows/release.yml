@@ -26,7 +26,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR=$(gh pr list --repo "${{ github.repository }}" --label "autorelease: pending" --json number -q '.[0].number')
-          [ -n "$PR" ] && gh pr merge "$PR" --squash --repo "${{ github.repository }}"
+          if [ -n "$PR" ]; then
+            gh pr merge "$PR" --squash --repo "${{ github.repository }}"
+          fi
 
       - uses: googleapis/release-please-action@v4
         id: release-post-merge
