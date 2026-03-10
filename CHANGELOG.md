@@ -2,6 +2,15 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.7](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.6...agentlens-v0.5.7) (2026-03-10)
+
+
+### Features
+
+* **cost:** add Claude.ai usage and spend tracking with auto-org discovery ([#8](https://github.com/tasszz2k/agent-lens/issues/8))
+
+  The cost dashboard now tracks Claude.ai usage alongside Claude Code and Cursor. Shows total spend, spend limit (with progress bar), and organization name. Supports multi-org accounts with automatic org discovery and manual override via `--set-claude-org-id`. New CLI flags: `--no-claude-ai`, `--set-claude-session-token`, `--set-claude-org-id`.
+
 ## [0.5.6](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.5...agentlens-v0.5.6) (2026-03-09)
 
 

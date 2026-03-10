@@ -328,6 +328,7 @@ interface AppProps {
   initialPage?: 'scan' | 'cost';
   configRoots?: string[];
   hasCursorToken?: boolean;
+  hasClaudeSessionToken?: boolean;
   version?: string;
 }
 
@@ -351,6 +352,7 @@ export default function App({
   initialPage,
   configRoots,
   hasCursorToken,
+  hasClaudeSessionToken,
   version,
 }: AppProps) {
   const { exit } = useApp();
@@ -612,6 +614,7 @@ export default function App({
                 width={terminalCols}
                 configRoots={configRoots ?? []}
                 hasCursorToken={hasCursorToken ?? false}
+                hasClaudeSessionToken={hasClaudeSessionToken ?? false}
               />
             )}
             {view === 'detail' && selectedNode && (

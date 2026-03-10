@@ -5,6 +5,8 @@ export interface AgentLensConfig {
   cursorSessionToken?: string;
   cursorTeamId?: number;
   cursorEmail?: string;
+  claudeSessionToken?: string;
+  claudeOrgId?: string;
 }
 
 export interface ProjectScan {
@@ -106,6 +108,7 @@ export interface ToolCostSummary {
   onDemand?: OnDemandUsage;
   teamOnDemand?: OnDemandUsage;
   leaderboard?: CursorLeaderboard;
+  claudeAi?: ClaudeAiUsage;
 }
 
 export interface OnDemandUsage {
@@ -122,6 +125,12 @@ export interface CursorLeaderboard {
   composerLinesSuggested: number;
   acceptanceRatio: number;
   favoriteModel: string;
+}
+
+export interface ClaudeAiUsage {
+  spentCents: number;
+  limitCents: number | null;
+  orgName: string;
 }
 
 export interface ModelCostBreakdown {

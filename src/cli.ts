@@ -3,7 +3,7 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { scanAll, scanForWhereCommand } from './scan.js';
-import { loadConfig, saveConfig, addRoot, removeRoot, setToolEnabled as configSetToolEnabled, setCategoryEnabled as configSetCategoryEnabled, setCursorToken, setCursorTeamId, LABEL_CATEGORIES, discoverProjects, getConfigPath } from './config.js';
+import { loadConfig, saveConfig, addRoot, removeRoot, setToolEnabled as configSetToolEnabled, setCategoryEnabled as configSetCategoryEnabled, setCursorToken, setCursorTeamId, setClaudeSessionToken, setClaudeOrgId, LABEL_CATEGORIES, discoverProjects, getConfigPath } from './config.js';
 import { runChecks } from './troubleshoot.js';
 import { analyzeWithClaude, isClaudeAvailable } from './ai.js';
 import { formatDiagnosticsForAI } from './troubleshoot.js';
@@ -73,6 +73,7 @@ program
           initialDisabledCategories: config.disabledCategories,
           configRoots: config.roots,
           hasCursorToken: !!config.cursorSessionToken,
+          hasClaudeSessionToken: !!config.claudeSessionToken,
           version,
         })
       );
@@ -91,24 +92,35 @@ program
   .description('Show agent usage cost dashboard')
   .option('--json', 'Output JSON instead of formatted text')
   .option('--no-cursor', 'Skip Cursor API (only show Claude Code costs)')
+  .option('--no-claude-ai', 'Skip Claude.ai costs')
   .action(async (opts) => {
-    const { fetchAllCosts, fetchClaudeCodeCosts } = await import('./cost.js');
+    const { fetchAllCosts, fetchClaudeCodeCosts, fetchClaudeAiCosts } = await import('./cost.js');
+
+    const skipCursor = opts.cursor === false;
+    const skipClaudeAi = opts.claudeAi === false;
+
+    async function buildReport() {
+      if (!skipCursor && !skipClaudeAi) return fetchAllCosts();
+      const fetchers: Promise<import('./types.js').ToolCostSummary>[] = [];
+      if (!skipClaudeAi) fetchers.push(fetchClaudeAiCosts());
+      fetchers.push(fetchClaudeCodeCosts());
+      if (!skipCursor) {
+        const { fetchCursorCosts } = await import('./cost.js');
+        fetchers.push(fetchCursorCosts());
+      }
+      const results = await Promise.allSettled(fetchers);
+      const now = new Date();
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      return {
+        tools: results.map((r) => r.status === 'fulfilled' ? r.value : { tool: 'Unknown', totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, models: [] as import('./types.js').ModelCostBreakdown[], period: '', error: (r.reason as Error)?.message ?? String(r.reason) }),
+        month: `${monthNames[now.getMonth()]} ${now.getFullYear()}`,
+        monthStart: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
+        fetchedAt: now.toISOString(),
+      };
+    }
 
     if (opts.json) {
-      let report;
-      if (opts.cursor === false) {
-        const claudeCosts = await fetchClaudeCodeCosts();
-        const now = new Date();
-        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-        report = {
-          tools: [claudeCosts],
-          month: `${monthNames[now.getMonth()]} ${now.getFullYear()}`,
-          monthStart: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
-          fetchedAt: now.toISOString(),
-        };
-      } else {
-        report = await fetchAllCosts();
-      }
+      const report = await buildReport();
       console.log(renderJson(report));
       return;
     }
@@ -133,6 +145,7 @@ program
           initialPage: 'cost',
           configRoots: config.roots,
           hasCursorToken: !!config.cursorSessionToken,
+          hasClaudeSessionToken: !!config.claudeSessionToken,
           version,
         })
       );
@@ -141,20 +154,7 @@ program
       });
     } else {
       const { renderCostStatic } = await import('./render.js');
-      let report;
-      if (opts.cursor === false) {
-        const claudeCosts = await fetchClaudeCodeCosts();
-        const now = new Date();
-        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-        report = {
-          tools: [claudeCosts],
-          month: `${monthNames[now.getMonth()]} ${now.getFullYear()}`,
-          monthStart: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
-          fetchedAt: now.toISOString(),
-        };
-      } else {
-        report = await fetchAllCosts();
-      }
+      const report = await buildReport();
       console.log(renderCostStatic(report));
     }
   });
@@ -239,6 +239,10 @@ const configCmd = program
   .option('--clear-cursor-token', 'Remove stored Cursor session token')
   .option('--set-cursor-team-id <id>', 'Set Cursor team ID for leaderboard (from cursor.com dashboard)')
   .option('--clear-cursor-team-id', 'Remove Cursor team ID')
+  .option('--set-claude-session-token <token>', 'Set Claude.ai session token for cost tracking')
+  .option('--clear-claude-session-token', 'Remove stored Claude.ai session token')
+  .option('--set-claude-org-id <id>', 'Set Claude.ai organization UUID')
+  .option('--clear-claude-org-id', 'Remove Claude.ai organization UUID')
   .action(async (opts) => {
     if (opts.setCursorToken) {
       await setCursorToken(opts.setCursorToken);
@@ -269,6 +273,31 @@ const configCmd = program
     if (opts.clearCursorTeamId) {
       await setCursorTeamId(undefined);
       console.log('Cursor team ID removed.');
+      return;
+    }
+
+    if (opts.setClaudeSessionToken) {
+      await setClaudeSessionToken(opts.setClaudeSessionToken);
+      console.log('Claude.ai session token saved.');
+      console.log('Run "agentlens cost" to view your Claude.ai usage costs.');
+      return;
+    }
+
+    if (opts.clearClaudeSessionToken) {
+      await setClaudeSessionToken(undefined);
+      console.log('Claude.ai session token removed.');
+      return;
+    }
+
+    if (opts.setClaudeOrgId) {
+      await setClaudeOrgId(opts.setClaudeOrgId);
+      console.log(`Claude.ai organization ID saved: ${opts.setClaudeOrgId}`);
+      return;
+    }
+
+    if (opts.clearClaudeOrgId) {
+      await setClaudeOrgId(undefined);
+      console.log('Claude.ai organization ID removed.');
       return;
     }
 

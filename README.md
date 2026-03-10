@@ -8,7 +8,7 @@ CLI tool to scan agent configuration, track usage costs, and inspects agent conf
 
 AgentLens discovers skills, rules, commands, context files, hooks, and MCP server configs for **Cursor**, **Claude Code**, **Codex**, **GitHub Copilot**, and multi-agent setups (`AGENTS.md`). It scans both global (`~/.cursor`, `~/.claude`, etc.) and project-level locations, then displays an interactive tree or static text map. With configured workspace roots, it also discovers and scans all projects across your workspace.
 
-It also provides a **cost dashboard** showing usage and costs for Claude Code (from local JSONL logs) and Cursor (from the Cursor API).
+It also provides a **cost dashboard** showing usage and costs for Claude.ai (from the Claude.ai API), Claude Code (from local JSONL logs), and Cursor (from the Cursor API).
 
 ## Screenshots
 
@@ -199,7 +199,8 @@ agentlens config tools          Manage tool/category visibility filters
 | Flag | Description |
 |---|---|
 | `--json` | Output JSON instead of formatted text |
-| `--no-cursor` | Skip Cursor API (only show Claude Code costs) |
+| `--no-cursor` | Skip Cursor API costs |
+| `--no-claude-ai` | Skip Claude.ai costs |
 
 **config**
 
@@ -212,6 +213,10 @@ agentlens config tools          Manage tool/category visibility filters
 | `--clear-cursor-token` | Remove stored Cursor session token |
 | `--set-cursor-team-id <id>` | Override Cursor team ID for leaderboard (auto-detected by default) |
 | `--clear-cursor-team-id` | Remove stored Cursor team ID |
+| `--set-claude-session-token <token>` | Set Claude.ai session token for cost tracking |
+| `--clear-claude-session-token` | Remove stored Claude.ai session token |
+| `--set-claude-org-id <id>` | Set Claude.ai organization UUID (for multi-org accounts) |
+| `--clear-claude-org-id` | Remove Claude.ai organization UUID |
 
 ### Examples
 
@@ -225,8 +230,8 @@ agentlens scan -p ~/projects/myapp --json
 # View cost dashboard
 agentlens cost
 
-# View Claude Code costs only (skip Cursor)
-agentlens cost --no-cursor
+# View Claude Code costs only (skip Cursor and Claude.ai)
+agentlens cost --no-cursor --no-claude-ai
 
 # Find where a canonical skill is installed
 agentlens where git-commit
@@ -247,6 +252,24 @@ agentlens config tools
 ## Cost Dashboard
 
 AgentLens aggregates usage and cost data from multiple AI coding tools into a single view.
+
+### Claude.ai
+
+Usage data is fetched from the Claude.ai API. Setup requires a session token:
+
+```bash
+agentlens config --set-claude-session-token <token>
+```
+
+To get the token: open [claude.ai](https://claude.ai) > DevTools (`F12`) > Application > Cookies > copy `sessionKey`.
+
+The Claude.ai dashboard shows:
+
+- **Total spend** for the current billing period (e.g., `$22.17`)
+- **Spend limit** with progress bar (or "Unlimited" if no cap)
+- **Organization name** (auto-detected; for multi-org accounts, use `--set-claude-org-id` to override)
+
+AgentLens automatically tries each organization until it finds one with accessible usage data.
 
 ### Claude Code
 
@@ -383,7 +406,7 @@ src/
   scan.ts           Core scanning (global + project, multi-project discovery)
   parse.ts          Frontmatter, MDC, TOML, MCP JSON, hooks, SQLite parsing
   config.ts         Config, workspace roots, tool/category filters, Cursor token, project discovery
-  cost.ts           Cost aggregation (Claude Code JSONL logs, Cursor API)
+  cost.ts           Cost aggregation (Claude.ai API, Claude Code JSONL logs, Cursor API)
   render.ts         Static text output (CURRENT, GLOBAL, PROJECT with filtering, cost report)
   troubleshoot.ts   Health checks and diagnostics
   ai.ts             Claude Code CLI integration

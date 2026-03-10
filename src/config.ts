@@ -39,7 +39,7 @@ export async function loadConfig(): Promise<AgentLensConfig> {
   const configPath = getConfigPath();
   try {
     const raw = await fs.readFile(configPath, 'utf-8');
-    const parsed = JSON.parse(raw) as { roots?: string[]; disabledTools?: string[]; disabledCategories?: string[]; cursorSessionToken?: string; cursorTeamId?: number; cursorEmail?: string };
+    const parsed = JSON.parse(raw) as { roots?: string[]; disabledTools?: string[]; disabledCategories?: string[]; cursorSessionToken?: string; cursorTeamId?: number; cursorEmail?: string; claudeSessionToken?: string; claudeOrgId?: string };
     const roots = Array.isArray(parsed?.roots)
       ? parsed.roots.map(fromPortable)
       : [];
@@ -58,7 +58,13 @@ export async function loadConfig(): Promise<AgentLensConfig> {
     const cursorEmail = typeof parsed?.cursorEmail === 'string'
       ? parsed.cursorEmail
       : undefined;
-    return { roots, disabledTools, disabledCategories, cursorSessionToken, cursorTeamId, cursorEmail };
+    const claudeSessionToken = typeof parsed?.claudeSessionToken === 'string'
+      ? parsed.claudeSessionToken
+      : undefined;
+    const claudeOrgId = typeof parsed?.claudeOrgId === 'string'
+      ? parsed.claudeOrgId
+      : undefined;
+    return { roots, disabledTools, disabledCategories, cursorSessionToken, cursorTeamId, cursorEmail, claudeSessionToken, claudeOrgId };
   } catch {
     return { roots: [] };
   }
@@ -85,6 +91,12 @@ export async function saveConfig(config: AgentLensConfig): Promise<void> {
   }
   if (config.cursorEmail) {
     portable.cursorEmail = config.cursorEmail;
+  }
+  if (config.claudeSessionToken) {
+    portable.claudeSessionToken = config.claudeSessionToken;
+  }
+  if (config.claudeOrgId) {
+    portable.claudeOrgId = config.claudeOrgId;
   }
   await fs.writeFile(configPath, JSON.stringify(portable, null, 2) + '\n');
 }
@@ -152,6 +164,20 @@ export async function setCursorToken(token: string | undefined): Promise<AgentLe
 export async function setCursorTeamId(teamId: number | undefined): Promise<AgentLensConfig> {
   const config = await loadConfig();
   const next: AgentLensConfig = { ...config, cursorTeamId: teamId };
+  await saveConfig(next);
+  return next;
+}
+
+export async function setClaudeSessionToken(token: string | undefined): Promise<AgentLensConfig> {
+  const config = await loadConfig();
+  const next: AgentLensConfig = { ...config, claudeSessionToken: token };
+  await saveConfig(next);
+  return next;
+}
+
+export async function setClaudeOrgId(orgId: string | undefined): Promise<AgentLensConfig> {
+  const config = await loadConfig();
+  const next: AgentLensConfig = { ...config, claudeOrgId: orgId };
   await saveConfig(next);
   return next;
 }

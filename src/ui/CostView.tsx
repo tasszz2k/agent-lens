@@ -145,12 +145,52 @@ function buildLines(report: CostReport, width: number): LineItem[] {
       });
     }
 
+    if (tool.claudeAi) {
+      const ca = tool.claudeAi;
+      if (ca.orgName) {
+        lines.push({
+          element: (
+            <Text key={`org-${tool.tool}`} dimColor>
+              {'  Org: '}{ca.orgName}
+            </Text>
+          ),
+        });
+      }
+      const limitLabel = ca.limitCents == null ? 'Unlimited' : `$${(ca.limitCents / 100).toFixed(2)}`;
+      lines.push({
+        element: (
+          <Text key={`limit-${tool.tool}`}>
+            {'  Spend limit: '}<Text color={ca.limitCents == null ? 'cyan' : 'white'}>{limitLabel}</Text>
+          </Text>
+        ),
+      });
+      if (ca.limitCents != null && ca.limitCents > 0) {
+        const caBarWidth = 20;
+        const caRatio = ca.spentCents / ca.limitCents;
+        const caFilled = Math.round(caRatio * caBarWidth);
+        const caBar = '\u2588'.repeat(caFilled) + '\u2591'.repeat(caBarWidth - caFilled);
+        const caPct = (caRatio * 100).toFixed(1);
+        lines.push({
+          element: (
+            <Text key={`limit-bar-${tool.tool}`}>
+              {'  '}
+              <Text color="green">{caBar.slice(0, caFilled)}</Text>
+              <Text dimColor>{caBar.slice(caFilled)}</Text>
+              {` $${(ca.spentCents / 100).toFixed(2)} / $${(ca.limitCents / 100).toFixed(2)} (${caPct}%)`}
+            </Text>
+          ),
+        });
+      }
+    }
+
     lines.push({ element: <Text key={`sp-${tool.tool}`}>{' '}</Text> });
 
     const colModel = 20;
     const colNum = 10;
 
-    if (hasRequests && !hasCost) {
+    if (tool.models.length === 0) {
+      // no model breakdown (e.g. Claude.ai aggregate billing)
+    } else if (hasRequests && !hasCost) {
       const header = '  ' +
         pad('Model', colModel) +
         pad('Tokens', colNum) +

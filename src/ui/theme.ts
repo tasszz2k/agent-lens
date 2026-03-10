@@ -5,6 +5,7 @@ const toolColors: Record<string, (s: string) => string> = {
   'Cursor': chalk.bold.hex('#00B4D8'),
   'Codex': chalk.bold.hex('#10A37F'),
   'Copilot': chalk.bold.hex('#2EA6FF'),
+  'Claude.ai': chalk.bold.hex('#C4956A'),
   'Canonical': chalk.bold.white,
   'Multi-agent': chalk.bold.blue,
 };

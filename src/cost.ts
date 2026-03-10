@@ -3,8 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { CostReport, ToolCostSummary, ModelCostBreakdown, OnDemandUsage, CursorLeaderboard } from './types.js';
-import { loadConfig } from './config.js';
+import type { CostReport, ToolCostSummary, ModelCostBreakdown, OnDemandUsage, CursorLeaderboard, ClaudeAiUsage } from './types.js';
+import { loadConfig, setClaudeOrgId } from './config.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -525,6 +525,157 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
   }
 }
 
+async function getClaudeSessionToken(): Promise<string | null> {
+  try {
+    const config = await loadConfig();
+    return config.claudeSessionToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+async function fetchClaudeBootstrap(token: string): Promise<{
+  accountUuid: string;
+  orgs: Array<{ uuid: string; name: string }>;
+} | null> {
+  try {
+    const res = await fetch('https://claude.ai/api/bootstrap', {
+      headers: { Cookie: `sessionKey=${token}`, 'User-Agent': BROWSER_UA },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>;
+    const account = data.account as Record<string, unknown> | undefined;
+    if (!account || typeof account.uuid !== 'string') return null;
+
+    const memberships = account.memberships as Array<Record<string, unknown>> | undefined;
+    const orgs: Array<{ uuid: string; name: string }> = [];
+    if (Array.isArray(memberships)) {
+      for (const m of memberships) {
+        const org = m.organization as Record<string, unknown> | undefined;
+        if (org && typeof org.uuid === 'string') {
+          orgs.push({
+            uuid: org.uuid,
+            name: typeof org.name === 'string' ? org.name : '',
+          });
+        }
+      }
+    }
+    return { accountUuid: account.uuid, orgs };
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchClaudeAiCosts(): Promise<ToolCostSummary> {
+  const period = formatPeriod();
+  try {
+    const token = await getClaudeSessionToken();
+    if (!token) {
+      return {
+        tool: 'Claude.ai',
+        totalCostUsd: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        models: [],
+        period,
+        error: 'No session token. Run: agentlens config --set-claude-session-token <token>\n'
+          + '  To get your token: claude.ai > DevTools (F12) > Application > Cookies > sessionKey',
+      };
+    }
+
+    const bootstrap = await fetchClaudeBootstrap(token);
+    if (!bootstrap) {
+      return {
+        tool: 'Claude.ai',
+        totalCostUsd: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        models: [],
+        period,
+        error: 'Failed to fetch account info. Your session token may be expired.\n'
+          + '  Update it: agentlens config --set-claude-session-token <token>',
+      };
+    }
+
+    if (bootstrap.orgs.length === 0) {
+      return {
+        tool: 'Claude.ai',
+        totalCostUsd: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        models: [],
+        period,
+        error: 'No organizations found for this account.',
+      };
+    }
+
+    const config = await loadConfig();
+
+    // Determine org order: config override first, then try all orgs
+    const orgsToTry: Array<{ uuid: string; name: string }> = [];
+    if (config.claudeOrgId) {
+      const match = bootstrap.orgs.find((o) => o.uuid === config.claudeOrgId);
+      if (match) orgsToTry.push(match);
+    }
+    for (const org of bootstrap.orgs) {
+      if (!orgsToTry.some((o) => o.uuid === org.uuid)) orgsToTry.push(org);
+    }
+
+    for (const org of orgsToTry) {
+      const url = `https://claude.ai/api/organizations/${org.uuid}/overage_spend_limit?account_uuid=${bootstrap.accountUuid}`;
+      const usageRes = await fetch(url, {
+        headers: { Cookie: `sessionKey=${token}`, 'User-Agent': BROWSER_UA },
+      });
+
+      if (!usageRes.ok) continue;
+
+      const data = (await usageRes.json()) as Record<string, unknown>;
+      if (data == null) continue;
+
+      const spentCents = typeof data.used_credits === 'number' ? data.used_credits : 0;
+      const limitCents = typeof data.monthly_credit_limit === 'number' ? data.monthly_credit_limit : null;
+
+      const claudeAi: ClaudeAiUsage = {
+        spentCents,
+        limitCents,
+        orgName: org.name,
+      };
+
+      return {
+        tool: 'Claude.ai',
+        totalCostUsd: spentCents / 100,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        models: [],
+        claudeAi,
+        period,
+      };
+    }
+
+    return {
+      tool: 'Claude.ai',
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      models: [],
+      period,
+      error: 'No accessible organization found. Try: agentlens config --set-claude-org-id <uuid>',
+    };
+  } catch (err) {
+    return {
+      tool: 'Claude.ai',
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      models: [],
+      period,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export async function fetchAllCosts(): Promise<CostReport> {
   const now = new Date();
   const monthStart = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -532,12 +683,26 @@ export async function fetchAllCosts(): Promise<CostReport> {
   const month = monthNames[now.getMonth()];
   const monthLabel = `${month} ${now.getFullYear()}`;
 
-  const [claudeResult, cursorResult] = await Promise.allSettled([
+  const [claudeResult, cursorResult, claudeAiResult] = await Promise.allSettled([
     fetchClaudeCodeCosts(),
     fetchCursorCosts(),
+    fetchClaudeAiCosts(),
   ]);
 
   const tools: ToolCostSummary[] = [];
+  if (claudeAiResult.status === 'fulfilled') {
+    tools.push(claudeAiResult.value);
+  } else {
+    tools.push({
+      tool: 'Claude.ai',
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      models: [],
+      period: formatPeriod(),
+      error: claudeAiResult.reason?.message ?? String(claudeAiResult.reason),
+    });
+  }
   if (claudeResult.status === 'fulfilled') {
     tools.push(claudeResult.value);
   } else {

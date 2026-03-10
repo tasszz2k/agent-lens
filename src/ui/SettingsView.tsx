@@ -27,6 +27,7 @@ interface SettingsViewProps {
   width: number;
   configRoots: string[];
   hasCursorToken: boolean;
+  hasClaudeSessionToken: boolean;
 }
 
 export default function SettingsView({
@@ -40,6 +41,7 @@ export default function SettingsView({
   width,
   configRoots,
   hasCursorToken,
+  hasClaudeSessionToken,
 }: SettingsViewProps) {
   const [cursor, setCursor] = useState(0);
 
@@ -92,6 +94,27 @@ export default function SettingsView({
         kind: 'info', id: 'cursor-hint',
         render: () => (
           <Text dimColor>{'    '.padEnd(col + 4)}agentlens config --set-cursor-token {'<token>'}</Text>
+        ),
+      });
+    }
+
+    result.push({
+      kind: 'info', id: 'claude-ai-token',
+      render: () => (
+        <Text>
+          {'    '}
+          <Text dimColor>{'Claude.ai Token'.padEnd(col)}</Text>
+          {hasClaudeSessionToken
+            ? <Text color="green">configured</Text>
+            : <Text dimColor>not set</Text>}
+        </Text>
+      ),
+    });
+    if (!hasClaudeSessionToken) {
+      result.push({
+        kind: 'info', id: 'claude-ai-hint',
+        render: () => (
+          <Text dimColor>{'    '.padEnd(col + 4)}agentlens config --set-claude-session-token {'<token>'}</Text>
         ),
       });
     }
@@ -167,7 +190,7 @@ export default function SettingsView({
     }
 
     return result;
-  }, [scanResult, configRoots, hasCursorToken]);
+  }, [scanResult, configRoots, hasCursorToken, hasClaudeSessionToken]);
 
   const selectableIndices = useMemo(() => {
     const out: number[] = [];

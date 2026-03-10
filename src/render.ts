@@ -329,6 +329,21 @@ export function renderCostStatic(report: CostReport): string {
       lines.push(onDemandStr);
     }
 
+    if (tool.claudeAi) {
+      const ca = tool.claudeAi;
+      if (ca.orgName) lines.push(chalk.dim(`  Org: ${ca.orgName}`));
+      const limitLabel = ca.limitCents == null ? 'Unlimited' : `$${(ca.limitCents / 100).toFixed(2)}`;
+      lines.push(`  Spend limit: ${chalk.cyan(limitLabel)}`);
+      if (ca.limitCents != null && ca.limitCents > 0) {
+        const ratio = ca.spentCents / ca.limitCents;
+        const barWidth = 20;
+        const filled = Math.round(ratio * barWidth);
+        const bar = chalk.green('\u2588'.repeat(filled)) + chalk.dim('\u2591'.repeat(barWidth - filled));
+        const pctStr = (ratio * 100).toFixed(1);
+        lines.push(`  ${bar} $${(ca.spentCents / 100).toFixed(2)} / $${(ca.limitCents / 100).toFixed(2)} (${pctStr}%)`);
+      }
+    }
+
     lines.push('');
 
     if (tool.models.length > 0) {
