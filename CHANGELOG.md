@@ -2,6 +2,13 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.9](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.8...agentlens-v0.5.9) (2026-03-11)
+
+
+### Features
+
+* **settings:** add per-tool cost tracking toggle ([12b0d88](https://github.com/tasszz2k/agent-lens/commit/12b0d88738fe3e662bc026c4b6e0b7ae89ccbecb))
+
 ## [0.5.8](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.7...agentlens-v0.5.8) (2026-03-10)
 
 
