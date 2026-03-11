@@ -676,58 +676,36 @@ export async function fetchClaudeAiCosts(): Promise<ToolCostSummary> {
   }
 }
 
-export async function fetchAllCosts(): Promise<CostReport> {
+export async function fetchAllCosts(disabledCostTools?: Set<string>): Promise<CostReport> {
   const now = new Date();
   const monthStart = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const month = monthNames[now.getMonth()];
   const monthLabel = `${month} ${now.getFullYear()}`;
 
-  const [claudeResult, cursorResult, claudeAiResult] = await Promise.allSettled([
-    fetchClaudeCodeCosts(),
-    fetchCursorCosts(),
-    fetchClaudeAiCosts(),
-  ]);
+  const skip = disabledCostTools ?? new Set<string>();
+  const fetchers: { tool: string; promise: Promise<ToolCostSummary> }[] = [];
+  if (!skip.has('Claude.ai')) fetchers.push({ tool: 'Claude.ai', promise: fetchClaudeAiCosts() });
+  if (!skip.has('Claude Code')) fetchers.push({ tool: 'Claude Code', promise: fetchClaudeCodeCosts() });
+  if (!skip.has('Cursor')) fetchers.push({ tool: 'Cursor', promise: fetchCursorCosts() });
 
+  const results = await Promise.allSettled(fetchers.map((f) => f.promise));
   const tools: ToolCostSummary[] = [];
-  if (claudeAiResult.status === 'fulfilled') {
-    tools.push(claudeAiResult.value);
-  } else {
-    tools.push({
-      tool: 'Claude.ai',
-      totalCostUsd: 0,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      models: [],
-      period: formatPeriod(),
-      error: claudeAiResult.reason?.message ?? String(claudeAiResult.reason),
-    });
-  }
-  if (claudeResult.status === 'fulfilled') {
-    tools.push(claudeResult.value);
-  } else {
-    tools.push({
-      tool: 'Claude Code',
-      totalCostUsd: 0,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      models: [],
-      period: formatPeriod(),
-      error: claudeResult.reason?.message ?? String(claudeResult.reason),
-    });
-  }
-  if (cursorResult.status === 'fulfilled') {
-    tools.push(cursorResult.value);
-  } else {
-    tools.push({
-      tool: 'Cursor',
-      totalCostUsd: 0,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      models: [],
-      period: formatPeriod(),
-      error: cursorResult.reason?.message ?? String(cursorResult.reason),
-    });
+  for (let i = 0; i < fetchers.length; i++) {
+    const r = results[i];
+    if (r.status === 'fulfilled') {
+      tools.push(r.value);
+    } else {
+      tools.push({
+        tool: fetchers[i].tool,
+        totalCostUsd: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        models: [],
+        period: formatPeriod(),
+        error: r.reason?.message ?? String(r.reason),
+      });
+    }
   }
 
   return {

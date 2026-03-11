@@ -10,7 +10,7 @@ import CostView from './CostView.js';
 import { theme } from './theme.js';
 import type { ScanResult, TreeNode, ToolConfig, ConfigEntry, Diagnostic, LinkedEntry, CostReport } from '../types.js';
 import { fetchAllCosts } from '../cost.js';
-import { setToolEnabled, setCategoryEnabled, matchesDisabledCategory } from '../config.js';
+import { setToolEnabled, setCategoryEnabled, setCostToolEnabled, matchesDisabledCategory } from '../config.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -325,6 +325,7 @@ interface AppProps {
   mode: 'scan' | 'where';
   initialDisabledTools?: string[];
   initialDisabledCategories?: string[];
+  initialDisabledCostTools?: string[];
   initialPage?: 'scan' | 'cost';
   configRoots?: string[];
   hasCursorToken?: boolean;
@@ -349,6 +350,7 @@ export default function App({
   mode,
   initialDisabledTools,
   initialDisabledCategories,
+  initialDisabledCostTools,
   initialPage,
   configRoots,
   hasCursorToken,
@@ -359,6 +361,7 @@ export default function App({
   const [view, setView] = useState<'tree' | 'detail' | 'settings'>('tree');
   const [disabledTools, setDisabledTools] = useState<Set<string>>(() => new Set(initialDisabledTools ?? []));
   const [disabledCategories, setDisabledCategories] = useState<Set<string>>(() => new Set(initialDisabledCategories ?? []));
+  const [disabledCostTools, setDisabledCostTools] = useState<Set<string>>(() => new Set(initialDisabledCostTools ?? []));
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchActive, setSearchActive] = useState(false);
@@ -485,14 +488,14 @@ export default function App({
   const handleFetchCosts = useCallback(async () => {
     setCostLoading(true);
     try {
-      const report = await fetchAllCosts();
+      const report = await fetchAllCosts(disabledCostTools);
       setCostReport(report);
     } catch {
       // best-effort
     } finally {
       setCostLoading(false);
     }
-  }, []);
+  }, [disabledCostTools]);
 
   useEffect(() => {
     if (page === 'cost' && !costLoading) {
@@ -553,6 +556,19 @@ export default function App({
     });
   }, []);
 
+  const handleToggleCostTool = useCallback((tool: string) => {
+    setDisabledCostTools((prev) => {
+      const next = new Set(prev);
+      if (next.has(tool)) {
+        next.delete(tool);
+      } else {
+        next.add(tool);
+      }
+      setCostToolEnabled(tool, !next.has(tool)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const searchBarVisible = (searchActive && view === 'tree') || searchQuery.length > 0;
   const commandBarVisible = commandBarActive;
   const helpBarRows = showHelp ? 2 : 0;
@@ -607,8 +623,10 @@ export default function App({
                 scanResult={scanResult}
                 disabledTools={disabledTools}
                 disabledCategories={disabledCategories}
+                disabledCostTools={disabledCostTools}
                 onToggleTool={handleToggleTool}
                 onToggleCategory={handleToggleCategory}
+                onToggleCostTool={handleToggleCostTool}
                 onClose={handleSettingsClose}
                 height={contentHeight}
                 width={terminalCols}

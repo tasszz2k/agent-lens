@@ -2,6 +2,7 @@ export interface AgentLensConfig {
   roots: string[];
   disabledTools?: string[];
   disabledCategories?: string[];
+  disabledCostTools?: string[];
   cursorSessionToken?: string;
   cursorTeamId?: number;
   cursorEmail?: string;

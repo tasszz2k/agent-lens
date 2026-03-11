@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import os from 'node:os';
 import path from 'node:path';
 import type { ScanResult } from '../types.js';
-import { LABEL_CATEGORIES, getConfigPath } from '../config.js';
+import { LABEL_CATEGORIES, COST_TOOLS, getConfigPath } from '../config.js';
 
 function tildify(p: string): string {
   const home = os.homedir();
@@ -14,14 +14,16 @@ function tildify(p: string): string {
 type ListItem =
   | { kind: 'header'; id: string; label: string }
   | { kind: 'info'; id: string; render: () => React.ReactElement }
-  | { kind: 'toggle'; type: 'tool' | 'category'; id: string; label: string };
+  | { kind: 'toggle'; type: 'tool' | 'category' | 'cost-tool'; id: string; label: string };
 
 interface SettingsViewProps {
   scanResult: ScanResult;
   disabledTools: Set<string>;
   disabledCategories: Set<string>;
+  disabledCostTools: Set<string>;
   onToggleTool: (tool: string) => void;
   onToggleCategory: (category: string) => void;
+  onToggleCostTool: (tool: string) => void;
   onClose: () => void;
   height: number;
   width: number;
@@ -34,8 +36,10 @@ export default function SettingsView({
   scanResult,
   disabledTools,
   disabledCategories,
+  disabledCostTools,
   onToggleTool,
   onToggleCategory,
+  onToggleCostTool,
   onClose,
   height,
   width,
@@ -189,6 +193,11 @@ export default function SettingsView({
       }
     }
 
+    result.push({ kind: 'header', id: 'cost-header', label: 'Cost Tracking' });
+    for (const ct of COST_TOOLS) {
+      result.push({ kind: 'toggle', type: 'cost-tool', id: ct.id, label: ct.label });
+    }
+
     return result;
   }, [scanResult, configRoots, hasCursorToken, hasClaudeSessionToken]);
 
@@ -223,7 +232,8 @@ export default function SettingsView({
       const item = items[cursor];
       if (item.kind !== 'toggle') return;
       if (item.type === 'tool') onToggleTool(item.id);
-      else onToggleCategory(item.id);
+      else if (item.type === 'category') onToggleCategory(item.id);
+      else onToggleCostTool(item.id);
       return;
     }
   });
@@ -248,7 +258,9 @@ export default function SettingsView({
           const isSelected = globalIdx === cursor;
           const isDisabled = item.type === 'tool'
             ? disabledTools.has(item.id)
-            : disabledCategories.has(item.id);
+            : item.type === 'category'
+              ? disabledCategories.has(item.id)
+              : disabledCostTools.has(item.id);
           const checkbox = isDisabled ? '[ ]' : '[x]';
           const checkColor = isDisabled ? 'red' : 'green';
           return (
