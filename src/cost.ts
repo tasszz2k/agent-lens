@@ -120,6 +120,8 @@ export async function fetchClaudeCodeCosts(): Promise<ToolCostSummary> {
     let totalCostUsd = 0;
     let totalInput = 0;
     let totalOutput = 0;
+    let totalCacheW = 0;
+    let totalCacheR = 0;
 
     for (const [modelKey, tok] of Object.entries(byModel)) {
       const p = PRICING[modelKey as keyof typeof PRICING] ?? PRICING.sonnet;
@@ -132,6 +134,8 @@ export async function fetchClaudeCodeCosts(): Promise<ToolCostSummary> {
       totalCostUsd += costUsd;
       totalInput += tok.input;
       totalOutput += tok.output;
+      totalCacheW += tok.cacheWrite;
+      totalCacheR += tok.cacheRead;
 
       models.push({
         model: `claude-${modelKey}`,
@@ -150,6 +154,8 @@ export async function fetchClaudeCodeCosts(): Promise<ToolCostSummary> {
       totalCostUsd,
       totalInputTokens: totalInput,
       totalOutputTokens: totalOutput,
+      totalCacheWriteTokens: totalCacheW,
+      totalCacheReadTokens: totalCacheR,
       models,
       period,
     };

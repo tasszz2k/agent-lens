@@ -347,19 +347,8 @@ export function renderCostStatic(report: CostReport): string {
     lines.push('');
 
     if (tool.models.length > 0) {
-      if (hasRequests && !hasCost) {
-        const header = '  ' + 'Model'.padEnd(25) + 'Tokens'.padEnd(12) + 'Requests';
-        lines.push(chalk.dim(header));
-        for (const m of tool.models) {
-          const row = '  ' +
-            chalk.yellow(m.model.padEnd(25)) +
-            formatTokenCount(m.inputTokens).padEnd(12) +
-            String(m.numRequests ?? 0);
-          lines.push(row);
-        }
-        lines.push('');
-        lines.push(chalk.dim(`  Total: ${formatTokenCount(tool.totalInputTokens)} tokens / ${tool.totalRequests} requests`));
-      } else {
+      const hasBreakdown = tool.models.some(m => m.outputTokens > 0 || m.cacheWriteTokens > 0 || m.cacheReadTokens > 0);
+      if (hasBreakdown) {
         const header = '  ' + 'Model'.padEnd(25) + 'Input'.padEnd(12) + 'Output'.padEnd(12) + 'Cache W'.padEnd(12) + 'Cache R'.padEnd(12) + 'Cost';
         lines.push(chalk.dim(header));
         for (const m of tool.models) {
@@ -373,7 +362,21 @@ export function renderCostStatic(report: CostReport): string {
           lines.push(row);
         }
         lines.push('');
-        lines.push(chalk.dim(`  Total Tokens: ${formatTokenCount(tool.totalInputTokens)} in / ${formatTokenCount(tool.totalOutputTokens)} out`));
+        const totalCache = (tool.totalCacheWriteTokens ?? 0) + (tool.totalCacheReadTokens ?? 0);
+        const cacheSuffix = totalCache > 0 ? ` / ${formatTokenCount(totalCache)} cache` : '';
+        lines.push(chalk.dim(`  Total Tokens: ${formatTokenCount(tool.totalInputTokens)} in / ${formatTokenCount(tool.totalOutputTokens)} out${cacheSuffix}`));
+      } else {
+        const header = '  ' + 'Model'.padEnd(25) + 'Tokens'.padEnd(12) + 'Requests';
+        lines.push(chalk.dim(header));
+        for (const m of tool.models) {
+          const row = '  ' +
+            chalk.yellow(m.model.padEnd(25)) +
+            formatTokenCount(m.inputTokens).padEnd(12) +
+            String(m.numRequests ?? 0);
+          lines.push(row);
+        }
+        lines.push('');
+        lines.push(chalk.dim(`  Total: ${formatTokenCount(tool.totalInputTokens)} tokens / ${tool.totalRequests} requests`));
       }
     }
 

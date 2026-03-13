@@ -190,84 +190,89 @@ function buildLines(report: CostReport, width: number): LineItem[] {
 
     if (tool.models.length === 0) {
       // no model breakdown (e.g. Claude.ai aggregate billing)
-    } else if (hasRequests && !hasCost) {
-      const header = '  ' +
-        pad('Model', colModel) +
-        pad('Tokens', colNum) +
-        pad('Requests', colNum);
-      lines.push({
-        element: (
-          <Text key={`model-header-${tool.tool}`} dimColor>
-            {header}
-          </Text>
-        ),
-      });
-      for (const m of tool.models) {
-        const modelCell = pad(m.model.slice(0, colModel - 1), colModel);
-        const tokCell = pad(formatTokens(m.inputTokens), colNum);
-        const reqCell = pad(String(m.numRequests ?? 0), colNum);
-        lines.push({
-          element: (
-            <Text key={`model-${tool.tool}-${m.model}`}>
-              {'  '}
-              <Text color="yellow">{modelCell}</Text>
-              {tokCell}
-              {reqCell}
-            </Text>
-          ),
-        });
-      }
-      lines.push({
-        element: (
-          <Text key={`total-tokens-${tool.tool}`} dimColor>
-            {'  Total: '}{formatTokens(tool.totalInputTokens)}{' tokens / '}{tool.totalRequests}{' requests'}
-          </Text>
-        ),
-      });
     } else {
-      const header = '  ' +
-        pad('Model', colModel) +
-        pad('Input', colNum) +
-        pad('Output', colNum) +
-        pad('Cache W', colNum) +
-        pad('Cache R', colNum) +
-        pad('Cost', colNum);
-      lines.push({
-        element: (
-          <Text key={`model-header-${tool.tool}`} dimColor>
-            {header}
-          </Text>
-        ),
-      });
-      for (const m of tool.models) {
-        const modelCell = pad(m.model.slice(0, colModel - 1), colModel);
-        const inCell = pad(formatTokens(m.inputTokens), colNum);
-        const outCell = pad(formatTokens(m.outputTokens), colNum);
-        const cwCell = pad(formatTokens(m.cacheWriteTokens), colNum);
-        const crCell = pad(formatTokens(m.cacheReadTokens), colNum);
+      const hasBreakdown = tool.models.some(m => m.outputTokens > 0 || m.cacheWriteTokens > 0 || m.cacheReadTokens > 0);
+      if (hasBreakdown) {
+        const header = '  ' +
+          pad('Model', colModel) +
+          pad('Input', colNum) +
+          pad('Output', colNum) +
+          pad('Cache W', colNum) +
+          pad('Cache R', colNum) +
+          pad('Cost', colNum);
         lines.push({
           element: (
-            <Text key={`model-${tool.tool}-${m.model}`}>
-              {'  '}
-              <Text color="yellow">{modelCell}</Text>
-              {inCell}
-              {outCell}
-              {cwCell}
-              {crCell}
-              <Text color="green">{formatCost(m.costUsd)}</Text>
+            <Text key={`model-header-${tool.tool}`} dimColor>
+              {header}
+            </Text>
+          ),
+        });
+        for (const m of tool.models) {
+          const modelCell = pad(m.model.slice(0, colModel - 1), colModel);
+          const inCell = pad(formatTokens(m.inputTokens), colNum);
+          const outCell = pad(formatTokens(m.outputTokens), colNum);
+          const cwCell = pad(formatTokens(m.cacheWriteTokens), colNum);
+          const crCell = pad(formatTokens(m.cacheReadTokens), colNum);
+          lines.push({
+            element: (
+              <Text key={`model-${tool.tool}-${m.model}`}>
+                {'  '}
+                <Text color="yellow">{modelCell}</Text>
+                {inCell}
+                {outCell}
+                {cwCell}
+                {crCell}
+                <Text color="green">{formatCost(m.costUsd)}</Text>
+              </Text>
+            ),
+          });
+        }
+        const totalIn = formatTokens(tool.totalInputTokens);
+        const totalOut = formatTokens(tool.totalOutputTokens);
+        const totalCache = (tool.totalCacheWriteTokens ?? 0) + (tool.totalCacheReadTokens ?? 0);
+        const cacheSuffix = totalCache > 0 ? ` / ${formatTokens(totalCache)} cache` : '';
+        lines.push({
+          element: (
+            <Text key={`total-tokens-${tool.tool}`} dimColor>
+              {'  Total Tokens: '}{totalIn}{' in / '}{totalOut}{' out'}{cacheSuffix}
+            </Text>
+          ),
+        });
+      } else {
+        const header = '  ' +
+          pad('Model', colModel) +
+          pad('Tokens', colNum) +
+          pad('Requests', colNum);
+        lines.push({
+          element: (
+            <Text key={`model-header-${tool.tool}`} dimColor>
+              {header}
+            </Text>
+          ),
+        });
+        for (const m of tool.models) {
+          const modelCell = pad(m.model.slice(0, colModel - 1), colModel);
+          const tokCell = pad(formatTokens(m.inputTokens), colNum);
+          const reqCell = pad(String(m.numRequests ?? 0), colNum);
+          lines.push({
+            element: (
+              <Text key={`model-${tool.tool}-${m.model}`}>
+                {'  '}
+                <Text color="yellow">{modelCell}</Text>
+                {tokCell}
+                {reqCell}
+              </Text>
+            ),
+          });
+        }
+        lines.push({
+          element: (
+            <Text key={`total-tokens-${tool.tool}`} dimColor>
+              {'  Total: '}{formatTokens(tool.totalInputTokens)}{' tokens / '}{tool.totalRequests}{' requests'}
             </Text>
           ),
         });
       }
-      const totalIn = formatTokens(tool.totalInputTokens);
-      const totalOut = formatTokens(tool.totalOutputTokens);
-      lines.push({
-        element: (
-          <Text key={`total-tokens-${tool.tool}`} dimColor>
-            {'  Total Tokens: '}{totalIn}{' in / '}{totalOut}{' out'}
-          </Text>
-        ),
-      });
     }
 
     lines.push({ element: <Text key={`sp2-${tool.tool}`}>{' '}</Text> });

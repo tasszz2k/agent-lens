@@ -100,6 +100,8 @@ export interface ToolCostSummary {
   totalCostUsd: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCacheWriteTokens?: number;
+  totalCacheReadTokens?: number;
   totalRequests?: number;
   maxRequests?: number;
   planType?: string;
