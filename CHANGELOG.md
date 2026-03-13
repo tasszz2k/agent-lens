@@ -2,6 +2,13 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.10](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.9...agentlens-v0.5.10) (2026-03-13)
+
+
+### Bug Fixes
+
+* **cost:** show honest token display when API lacks breakdown data ([baa0177](https://github.com/tasszz2k/agent-lens/commit/baa0177d69dc991588ac16be06634f5f6990b0ba))
+
 ## [0.5.9](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.8...agentlens-v0.5.9) (2026-03-11)
 
 
