@@ -8,6 +8,13 @@ import { loadConfig, setClaudeOrgId } from './config.js';
 
 const execFileAsync = promisify(execFile);
 
+function extractErrorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = (err as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error) return `${err.message}: ${cause.message}`;
+  return err.message;
+}
+
 function localDateStr(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -167,7 +174,7 @@ export async function fetchClaudeCodeCosts(): Promise<ToolCostSummary> {
       totalOutputTokens: 0,
       models: [],
       period,
-      error: err instanceof Error ? err.message : String(err),
+      error: extractErrorMessage(err),
     };
   }
 }
@@ -526,7 +533,7 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
       totalOutputTokens: 0,
       models: [],
       period,
-      error: err instanceof Error ? err.message : String(err),
+      error: extractErrorMessage(err),
     };
   }
 }
@@ -677,7 +684,7 @@ export async function fetchClaudeAiCosts(): Promise<ToolCostSummary> {
       totalOutputTokens: 0,
       models: [],
       period,
-      error: err instanceof Error ? err.message : String(err),
+      error: extractErrorMessage(err),
     };
   }
 }
@@ -709,7 +716,7 @@ export async function fetchAllCosts(disabledCostTools?: Set<string>): Promise<Co
         totalOutputTokens: 0,
         models: [],
         period: formatPeriod(),
-        error: r.reason?.message ?? String(r.reason),
+        error: extractErrorMessage(r.reason),
       });
     }
   }
