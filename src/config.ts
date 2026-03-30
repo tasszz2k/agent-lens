@@ -39,7 +39,7 @@ export async function loadConfig(): Promise<AgentLensConfig> {
   const configPath = getConfigPath();
   try {
     const raw = await fs.readFile(configPath, 'utf-8');
-    const parsed = JSON.parse(raw) as { roots?: string[]; disabledTools?: string[]; disabledCategories?: string[]; disabledCostTools?: string[]; cursorSessionToken?: string; cursorTeamId?: number; cursorEmail?: string; claudeSessionToken?: string; claudeOrgId?: string };
+    const parsed = JSON.parse(raw) as { roots?: string[]; disabledTools?: string[]; disabledCategories?: string[]; disabledCostTools?: string[]; cursorSessionToken?: string; cursorTeamId?: number; cursorEmail?: string; claudeSessionToken?: string; claudeOrgId?: string; claudeAdminApiKey?: string };
     const roots = Array.isArray(parsed?.roots)
       ? parsed.roots.map(fromPortable)
       : [];
@@ -51,7 +51,7 @@ export async function loadConfig(): Promise<AgentLensConfig> {
       : undefined;
     const disabledCostTools = Array.isArray(parsed?.disabledCostTools)
       ? parsed.disabledCostTools
-      : undefined;
+      : DEFAULT_DISABLED_COST_TOOLS;
     const cursorSessionToken = typeof parsed?.cursorSessionToken === 'string'
       ? parsed.cursorSessionToken
       : undefined;
@@ -67,7 +67,10 @@ export async function loadConfig(): Promise<AgentLensConfig> {
     const claudeOrgId = typeof parsed?.claudeOrgId === 'string'
       ? parsed.claudeOrgId
       : undefined;
-    return { roots, disabledTools, disabledCategories, disabledCostTools, cursorSessionToken, cursorTeamId, cursorEmail, claudeSessionToken, claudeOrgId };
+    const claudeAdminApiKey = typeof parsed?.claudeAdminApiKey === 'string'
+      ? parsed.claudeAdminApiKey
+      : undefined;
+    return { roots, disabledTools, disabledCategories, disabledCostTools, cursorSessionToken, cursorTeamId, cursorEmail, claudeSessionToken, claudeOrgId, claudeAdminApiKey };
   } catch {
     return { roots: [] };
   }
@@ -86,7 +89,7 @@ export async function saveConfig(config: AgentLensConfig): Promise<void> {
   if (config.disabledCategories && config.disabledCategories.length > 0) {
     portable.disabledCategories = config.disabledCategories;
   }
-  if (config.disabledCostTools && config.disabledCostTools.length > 0) {
+  if (config.disabledCostTools) {
     portable.disabledCostTools = config.disabledCostTools;
   }
   if (config.cursorSessionToken) {
@@ -103,6 +106,9 @@ export async function saveConfig(config: AgentLensConfig): Promise<void> {
   }
   if (config.claudeOrgId) {
     portable.claudeOrgId = config.claudeOrgId;
+  }
+  if (config.claudeAdminApiKey) {
+    portable.claudeAdminApiKey = config.claudeAdminApiKey;
   }
   await fs.writeFile(configPath, JSON.stringify(portable, null, 2) + '\n');
 }
@@ -166,6 +172,8 @@ export const COST_TOOLS = [
   { id: 'Cursor', label: 'Cursor' },
 ] as const;
 
+const DEFAULT_DISABLED_COST_TOOLS = ['Claude Code'];
+
 export async function setCostToolEnabled(tool: string, enabled: boolean): Promise<AgentLensConfig> {
   const config = await loadConfig();
   const disabled = new Set(config.disabledCostTools ?? []);
@@ -176,7 +184,7 @@ export async function setCostToolEnabled(tool: string, enabled: boolean): Promis
   }
   const next: AgentLensConfig = {
     ...config,
-    disabledCostTools: disabled.size > 0 ? [...disabled].sort() : undefined,
+    disabledCostTools: [...disabled].sort(),
   };
   await saveConfig(next);
   return next;
@@ -199,6 +207,13 @@ export async function setCursorTeamId(teamId: number | undefined): Promise<Agent
 export async function setClaudeSessionToken(token: string | undefined): Promise<AgentLensConfig> {
   const config = await loadConfig();
   const next: AgentLensConfig = { ...config, claudeSessionToken: token };
+  await saveConfig(next);
+  return next;
+}
+
+export async function setClaudeAdminApiKey(key: string | undefined): Promise<AgentLensConfig> {
+  const config = await loadConfig();
+  const next: AgentLensConfig = { ...config, claudeAdminApiKey: key };
   await saveConfig(next);
   return next;
 }

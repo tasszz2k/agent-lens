@@ -23,8 +23,8 @@ CLI tool that scans agent configuration across AI coding tools (Cursor, Claude C
 - `src/cli.ts` -- CLI entry, Commander commands: `scan` (default), `cost`, `where`, `troubleshoot`, `config`, `config tools`
 - `src/scan.ts` -- Core scanning logic: `scanGlobal()`, `scanProject()`, `scanAll()`, `scanForWhereCommand()`. `scanDirectory()` supports multiple file patterns and recursive subdirectory traversal. `scanAll()` discovers and scans all projects from configured workspace roots.
 - `src/parse.ts` -- File parsing: frontmatter, skills, MDC rules (with YAML error fallback), commands, MCP JSON/TOML, hooks from settings.json, Cursor user rules from state.vscdb via sqlite3 CLI
-- `src/cost.ts` -- Cost aggregation: `fetchClaudeCodeCosts()` reads local JSONL usage logs and calculates per-model costs with static pricing; `fetchCursorCosts()` fetches usage from `GET cursor.com/api/usage` (premium requests, tokens) and plan info from `GET cursor.com/api/auth/stripe`; `fetchAllCosts()` orchestrates both
-- `src/config.ts` -- AgentLens config at `~/.config/agentlens/config.json`, workspace root management, tool/category filter persistence (`disabledTools`, `disabledCategories`), `cursorSessionToken` for Cursor API auth, `LABEL_CATEGORIES` for label-based filtering, `discoverProjects()` recursively walks roots up to 3 levels deep looking for agent markers
+- `src/cost.ts` -- Cost aggregation: `fetchClaudeCodeCosts()` reads local JSONL usage logs and calculates per-model costs with static pricing; `fetchCursorCosts()` fetches premium request counts from `GET /api/usage`, on-demand spend from `GET /api/usage-summary`, user ID from `GET /api/auth/me`, team/billing cycle from `POST /api/dashboard/teams`, and per-model token+cost breakdown from `POST /api/dashboard/get-daily-spend-by-category`; `fetchClaudeAiCosts()` fetches spend from Claude.ai overage API; `fetchAllCosts()` orchestrates all
+- `src/config.ts` -- AgentLens config at `~/.config/agentlens/config.json`, workspace root management, tool/category filter persistence (`disabledTools`, `disabledCategories`), `cursorSessionToken` for Cursor API auth, `claudeAdminApiKey` for Claude Admin API, `LABEL_CATEGORIES` for label-based filtering, `discoverProjects()` recursively walks roots up to 3 levels deep looking for agent markers
 - `src/render.ts` -- Static text output rendering (non-TTY), renders CURRENT, GLOBAL, PROJECT, and OTHER PROJECTS sections with tool/category filtering; `renderCostStatic()` for cost report output
 - `src/troubleshoot.ts` -- Health check diagnostics
 - `src/ai.ts` -- Claude Code CLI integration for AI analysis
@@ -44,7 +44,8 @@ CLI tool that scans agent configuration across AI coding tools (Cursor, Claude C
 - `ScanResult.projects` holds all discovered projects (excluding current) from configured workspace roots
 - `discoverProjects()` skips `.`-prefixed, `node_modules`, and `vendor` directories; stops recursing once a project marker is found
 - TUI uses two-level navigation: pages (Scan, Cost) switchable via `:` command bar, and views (tree, detail, settings) within the Scan page
-- Cost data adapts display to available fields: Claude Code shows input/output/cache tokens with cost; Cursor shows tokens/requests with plan limit bar
+- Cost data adapts display to available fields: Claude Code shows input/output/cache tokens with cost; Cursor shows per-model tokens/cost from daily-spend API with premium request bar and on-demand spend bar; token counts format as K/M/B
+- Cursor cost flow: `/api/auth/me` (userId) + `/api/dashboard/teams` (teamId, billing cycle) + `/api/dashboard/get-daily-spend-by-category` (per-model tokens+cost) + `/api/usage` (premium requests) + `/api/usage-summary` (on-demand dollars)
 
 ## Adding a New Scan Category
 

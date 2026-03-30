@@ -8,6 +8,7 @@ export interface AgentLensConfig {
   cursorEmail?: string;
   claudeSessionToken?: string;
   claudeOrgId?: string;
+  claudeAdminApiKey?: string;
 }
 
 export interface ProjectScan {
@@ -134,6 +135,7 @@ export interface ClaudeAiUsage {
   spentCents: number;
   limitCents: number | null;
   orgName: string;
+  planType?: string;
 }
 
 export interface ModelCostBreakdown {

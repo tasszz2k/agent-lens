@@ -272,6 +272,7 @@ export function renderWhereResult(canonicalSkills: ConfigEntry[], installations:
 }
 
 function formatTokenCount(n: number): string {
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return String(n);
@@ -331,7 +332,6 @@ export function renderCostStatic(report: CostReport): string {
 
     if (tool.claudeAi) {
       const ca = tool.claudeAi;
-      if (ca.orgName) lines.push(chalk.dim(`  Org: ${ca.orgName}`));
       const limitLabel = ca.limitCents == null ? 'Unlimited' : `$${(ca.limitCents / 100).toFixed(2)}`;
       lines.push(`  Spend limit: ${chalk.cyan(limitLabel)}`);
       if (ca.limitCents != null && ca.limitCents > 0) {
@@ -342,12 +342,22 @@ export function renderCostStatic(report: CostReport): string {
         const pctStr = (ratio * 100).toFixed(1);
         lines.push(`  ${bar} $${(ca.spentCents / 100).toFixed(2)} / $${(ca.limitCents / 100).toFixed(2)} (${pctStr}%)`);
       }
+      if (tool.totalCostUsd > 0) {
+        const now = new Date();
+        const dayOfMonth = now.getDate();
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const dailyAvg = tool.totalCostUsd / dayOfMonth;
+        const projected = dailyAvg * daysInMonth;
+        const daysLeft = daysInMonth - dayOfMonth;
+        lines.push(`  ${chalk.dim('Daily avg:')} $${dailyAvg.toFixed(2)}${chalk.dim('/day')}  ${chalk.dim('|  Projected:')} ${chalk.yellow('$' + projected.toFixed(2))} ${chalk.dim(`(${daysLeft}d left)`)}`);
+      }
     }
 
     lines.push('');
 
     if (tool.models.length > 0) {
       const hasBreakdown = tool.models.some(m => m.outputTokens > 0 || m.cacheWriteTokens > 0 || m.cacheReadTokens > 0);
+      const hasCostPerModel = tool.models.some(m => m.costUsd > 0);
       if (hasBreakdown) {
         const header = '  ' + 'Model'.padEnd(25) + 'Input'.padEnd(12) + 'Output'.padEnd(12) + 'Cache W'.padEnd(12) + 'Cache R'.padEnd(12) + 'Cost';
         lines.push(chalk.dim(header));
@@ -365,6 +375,21 @@ export function renderCostStatic(report: CostReport): string {
         const totalCache = (tool.totalCacheWriteTokens ?? 0) + (tool.totalCacheReadTokens ?? 0);
         const cacheSuffix = totalCache > 0 ? ` / ${formatTokenCount(totalCache)} cache` : '';
         lines.push(chalk.dim(`  Total Tokens: ${formatTokenCount(tool.totalInputTokens)} in / ${formatTokenCount(tool.totalOutputTokens)} out${cacheSuffix}`));
+      } else if (hasCostPerModel) {
+        const modelCol = 30;
+        const header = '  ' + 'Model'.padEnd(modelCol) + 'Tokens'.padEnd(12) + 'Cost';
+        lines.push(chalk.dim(header));
+        for (const m of tool.models) {
+          const row = '  ' +
+            chalk.yellow(m.model.padEnd(modelCol)) +
+            formatTokenCount(m.inputTokens).padEnd(12) +
+            chalk.green('$' + m.costUsd.toFixed(2));
+          lines.push(row);
+        }
+        lines.push('');
+        const totalCost = tool.models.reduce((s, m) => s + m.costUsd, 0);
+        const reqSuffix = hasRequests ? ` / ${tool.totalRequests} requests` : '';
+        lines.push(chalk.dim(`  Total: ${formatTokenCount(tool.totalInputTokens)} tokens${reqSuffix} / ${chalk.green('$' + totalCost.toFixed(2))}`));
       } else {
         const header = '  ' + 'Model'.padEnd(25) + 'Tokens'.padEnd(12) + 'Requests';
         lines.push(chalk.dim(header));

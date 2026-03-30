@@ -14,9 +14,10 @@ interface CostViewProps {
 }
 
 function formatTokens(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 1e6) return (n / 1000).toFixed(1) + 'K';
-  return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(n);
 }
 
 function formatCost(n: number): string {
@@ -147,15 +148,6 @@ function buildLines(report: CostReport, width: number): LineItem[] {
 
     if (tool.claudeAi) {
       const ca = tool.claudeAi;
-      if (ca.orgName) {
-        lines.push({
-          element: (
-            <Text key={`org-${tool.tool}`} dimColor>
-              {'  Org: '}{ca.orgName}
-            </Text>
-          ),
-        });
-      }
       const limitLabel = ca.limitCents == null ? 'Unlimited' : `$${(ca.limitCents / 100).toFixed(2)}`;
       lines.push({
         element: (
@@ -181,17 +173,39 @@ function buildLines(report: CostReport, width: number): LineItem[] {
           ),
         });
       }
+      if (tool.totalCostUsd > 0) {
+        const now = new Date();
+        const dayOfMonth = now.getDate();
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const dailyAvg = tool.totalCostUsd / dayOfMonth;
+        const projected = dailyAvg * daysInMonth;
+        lines.push({
+          element: (
+            <Text key={`daily-${tool.tool}`}>
+              {'  '}
+              <Text dimColor>{'Daily avg: '}</Text>
+              <Text color="white">{formatCost(dailyAvg)}</Text>
+              <Text dimColor>{'/day'}</Text>
+              <Text dimColor>{'  |  Projected: '}</Text>
+              <Text color="yellow">{formatCost(projected)}</Text>
+              <Text dimColor>{` (${daysInMonth - dayOfMonth}d left)`}</Text>
+            </Text>
+          ),
+        });
+      }
     }
 
     lines.push({ element: <Text key={`sp-${tool.tool}`}>{' '}</Text> });
 
     const colModel = 20;
+    const colModelWide = 30;
     const colNum = 10;
 
     if (tool.models.length === 0) {
       // no model breakdown (e.g. Claude.ai aggregate billing)
     } else {
       const hasBreakdown = tool.models.some(m => m.outputTokens > 0 || m.cacheWriteTokens > 0 || m.cacheReadTokens > 0);
+      const hasCostPerModel = tool.models.some(m => m.costUsd > 0);
       if (hasBreakdown) {
         const header = '  ' +
           pad('Model', colModel) +
@@ -235,6 +249,42 @@ function buildLines(report: CostReport, width: number): LineItem[] {
           element: (
             <Text key={`total-tokens-${tool.tool}`} dimColor>
               {'  Total Tokens: '}{totalIn}{' in / '}{totalOut}{' out'}{cacheSuffix}
+            </Text>
+          ),
+        });
+      } else if (hasCostPerModel) {
+        const header = '  ' +
+          pad('Model', colModelWide) +
+          pad('Tokens', colNum) +
+          pad('Cost', colNum);
+        lines.push({
+          element: (
+            <Text key={`model-header-${tool.tool}`} dimColor>
+              {header}
+            </Text>
+          ),
+        });
+        for (const m of tool.models) {
+          const modelCell = pad(m.model.slice(0, colModelWide - 1), colModelWide);
+          const tokCell = pad(formatTokens(m.inputTokens), colNum);
+          lines.push({
+            element: (
+              <Text key={`model-${tool.tool}-${m.model}`}>
+                {'  '}
+                <Text color="yellow">{modelCell}</Text>
+                {tokCell}
+                <Text color="green">{formatCost(m.costUsd)}</Text>
+              </Text>
+            ),
+          });
+        }
+        const totalCost = tool.models.reduce((s, m) => s + m.costUsd, 0);
+        const reqSuffix = hasRequests ? ` / ${tool.totalRequests} requests` : '';
+        lines.push({
+          element: (
+            <Text key={`total-tokens-${tool.tool}`} dimColor>
+              {'  Total: '}{formatTokens(tool.totalInputTokens)}{' tokens'}{reqSuffix}{' / '}
+              <Text color="green">{formatCost(totalCost)}</Text>
             </Text>
           ),
         });

@@ -330,6 +330,7 @@ interface AppProps {
   configRoots?: string[];
   hasCursorToken?: boolean;
   hasClaudeSessionToken?: boolean;
+  hasClaudeAdminApiKey?: boolean;
   version?: string;
 }
 
@@ -355,6 +356,7 @@ export default function App({
   configRoots,
   hasCursorToken,
   hasClaudeSessionToken,
+  hasClaudeAdminApiKey,
   version,
 }: AppProps) {
   const { exit } = useApp();
@@ -633,6 +635,7 @@ export default function App({
                 configRoots={configRoots ?? []}
                 hasCursorToken={hasCursorToken ?? false}
                 hasClaudeSessionToken={hasClaudeSessionToken ?? false}
+                hasClaudeAdminApiKey={hasClaudeAdminApiKey ?? false}
               />
             )}
             {view === 'detail' && selectedNode && (

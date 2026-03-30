@@ -6,6 +6,19 @@ import { promisify } from 'node:util';
 import type { CostReport, ToolCostSummary, ModelCostBreakdown, OnDemandUsage, CursorLeaderboard, ClaudeAiUsage } from './types.js';
 import { loadConfig, setClaudeOrgId } from './config.js';
 
+interface ClaudeAdminUsageRow {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+}
+
+interface ClaudeAdminCostRow {
+  model: string;
+  costUsd: number;
+}
+
 const execFileAsync = promisify(execFile);
 
 function extractErrorMessage(err: unknown): string {
@@ -383,7 +396,30 @@ async function getCursorEmail(): Promise<string | null> {
   return readVscdbKey('cursorAuth/cachedEmail');
 }
 
-async function fetchCursorTeamId(token: string): Promise<number | null> {
+async function fetchCursorMe(token: string): Promise<{ userId: number; email: string } | null> {
+  try {
+    const res = await fetch('https://cursor.com/api/auth/me', {
+      headers: { Cookie: `WorkosCursorSessionToken=${token}` },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>;
+    if (typeof data.id !== 'number') return null;
+    return {
+      userId: data.id,
+      email: typeof data.email === 'string' ? data.email : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+interface CursorTeamInfo {
+  teamId: number;
+  billingCycleStartMs: number;
+  billingCycleEndMs: number;
+}
+
+async function fetchCursorTeamInfo(token: string): Promise<CursorTeamInfo | null> {
   try {
     const res = await fetch('https://cursor.com/api/dashboard/teams', {
       method: 'POST',
@@ -395,9 +431,63 @@ async function fetchCursorTeamId(token: string): Promise<number | null> {
       body: '{}',
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { teams?: Array<{ id?: number }> };
+    const data = (await res.json()) as { teams?: Array<Record<string, unknown>> };
     const first = data.teams?.[0];
-    return typeof first?.id === 'number' ? first.id : null;
+    if (!first || typeof first.id !== 'number') return null;
+    const startMs = typeof first.billingCycleStart === 'string' ? Number(first.billingCycleStart) : NaN;
+    const endMs = typeof first.billingCycleEnd === 'string' ? Number(first.billingCycleEnd) : NaN;
+    return {
+      teamId: first.id,
+      billingCycleStartMs: Number.isFinite(startMs) ? startMs : 0,
+      billingCycleEndMs: Number.isFinite(endMs) ? endMs : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCursorDailySpend(
+  token: string,
+  teamId: number,
+  userId: number,
+  periodStartMs: number,
+  periodEndMs: number,
+): Promise<ModelCostBreakdown[] | null> {
+  try {
+    const res = await fetch('https://cursor.com/api/dashboard/get-daily-spend-by-category', {
+      method: 'POST',
+      headers: {
+        Cookie: buildCursorCookie(token, { team_id: teamId }),
+        'Content-Type': 'application/json',
+        Origin: 'https://cursor.com',
+      },
+      body: JSON.stringify({ teamId, userId, periodStartMs, periodEndMs, groupBy: 1, spendType: 1 }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { dailySpend?: Array<Record<string, unknown>> };
+    if (!Array.isArray(data.dailySpend)) return null;
+
+    const byCategory: Record<string, { tokens: number; spendCents: number }> = {};
+    for (const entry of data.dailySpend) {
+      const cat = typeof entry.category === 'string' ? entry.category : '';
+      if (!cat) continue;
+      const tokens = typeof entry.totalTokens === 'string' ? Number(entry.totalTokens) : 0;
+      const spend = typeof entry.spendCents === 'number' ? entry.spendCents : 0;
+      if (!byCategory[cat]) byCategory[cat] = { tokens: 0, spendCents: 0 };
+      byCategory[cat].tokens += tokens;
+      byCategory[cat].spendCents += spend;
+    }
+
+    const models: ModelCostBreakdown[] = Object.entries(byCategory).map(([cat, agg]) => ({
+      model: cat,
+      inputTokens: agg.tokens,
+      outputTokens: 0,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 0,
+      costUsd: agg.spendCents / 100,
+    }));
+    models.sort((a, b) => b.inputTokens - a.inputTokens);
+    return models;
   } catch {
     return null;
   }
@@ -420,75 +510,64 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
       };
     }
 
-    const usageRes = await fetch('https://cursor.com/api/usage', {
-      headers: { Cookie: `WorkosCursorSessionToken=${token}` },
-    });
+    const [usageRes, meResult, configResult, usageSummaryResult] = await Promise.all([
+      fetch('https://cursor.com/api/usage', {
+        headers: { Cookie: `WorkosCursorSessionToken=${token}` },
+      }),
+      fetchCursorMe(token),
+      loadConfig().catch(() => ({ cursorTeamId: undefined } as { cursorTeamId?: number })),
+      fetchCursorUsageSummary(token),
+    ]);
 
-    if (!usageRes.ok) {
-      const body = await usageRes.text().catch(() => '');
-      const parsed = (() => { try { return JSON.parse(body) as { error?: string }; } catch { return null; } })();
-      const detail = parsed?.error ?? `HTTP ${usageRes.status}`;
-      const hint = detail.includes('origin') || detail.includes('authenticated')
-        ? '\n  Try updating your token: agentlens config --set-cursor-token <token>\n'
-          + '  Get it from: cursor.com > DevTools (F12) > Application > Cookies > WorkosCursorSessionToken'
-        : '';
-      return {
-        tool: 'Cursor',
-        totalCostUsd: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        models: [],
-        period,
-        error: `API error: ${detail}${hint}`,
-      };
-    }
-
-    const usageData = (await usageRes.json()) as Record<string, unknown>;
-
-    const models: ModelCostBreakdown[] = [];
-    let totalTokens = 0;
+    // Premium request counts from /api/usage
     let totalRequests = 0;
     let maxRequests: number | undefined;
-
-    for (const [key, val] of Object.entries(usageData)) {
-      if (key === 'startOfMonth' || typeof val !== 'object' || !val) continue;
-      const entry = val as Record<string, unknown>;
-      const numTokens = typeof entry.numTokens === 'number' ? entry.numTokens : 0;
-      const reqs = typeof entry.numRequests === 'number' ? entry.numRequests : 0;
-      const maxReq = typeof entry.maxRequestUsage === 'number' ? entry.maxRequestUsage : undefined;
-
-      totalTokens += numTokens;
-      totalRequests += reqs;
-      if (maxReq != null) maxRequests = (maxRequests ?? 0) + maxReq;
-
-      models.push({
-        model: normalizeCursorTierName(key),
-        inputTokens: numTokens,
-        outputTokens: 0,
-        cacheWriteTokens: 0,
-        cacheReadTokens: 0,
-        costUsd: 0,
-        numRequests: reqs,
-      });
+    if (usageRes.ok) {
+      const usageData = (await usageRes.json()) as Record<string, unknown>;
+      for (const [key, val] of Object.entries(usageData)) {
+        if (key === 'startOfMonth' || typeof val !== 'object' || !val) continue;
+        const entry = val as Record<string, unknown>;
+        const reqs = typeof entry.numRequests === 'number' ? entry.numRequests : 0;
+        const maxReq = typeof entry.maxRequestUsage === 'number' ? entry.maxRequestUsage : undefined;
+        totalRequests += reqs;
+        if (maxReq != null) maxRequests = (maxRequests ?? 0) + maxReq;
+      }
     }
-
-    models.sort((a, b) => b.inputTokens - a.inputTokens);
 
     let planType: string | undefined;
     let onDemand: OnDemandUsage | undefined;
     let teamOnDemand: OnDemandUsage | undefined;
     let leaderboard: CursorLeaderboard | undefined;
 
-    const [emailResult, configResult, usageSummaryResult] = await Promise.all([
-      getCursorEmail(),
-      loadConfig().catch(() => ({ cursorTeamId: undefined } as { cursorTeamId?: number })),
-      fetchCursorUsageSummary(token),
-    ]);
+    if (usageSummaryResult) {
+      planType = usageSummaryResult.planType;
+      onDemand = usageSummaryResult.onDemand;
+      teamOnDemand = usageSummaryResult.teamOnDemand;
+    }
 
-    const email = emailResult;
+    const email = meResult?.email || await getCursorEmail();
     let teamId = configResult.cursorTeamId ?? null;
-    if (teamId == null && email) {
-      teamId = await fetchCursorTeamId(token);
+    let billingStart = 0;
+    let billingEnd = 0;
+
+    const teamInfo = await fetchCursorTeamInfo(token);
+    if (teamInfo) {
+      teamId = teamInfo.teamId;
+      billingStart = teamInfo.billingCycleStartMs;
+      billingEnd = teamInfo.billingCycleEndMs;
+    }
+
+    // Per-model token + cost data from daily-spend API
+    let models: ModelCostBreakdown[] = [];
+    let totalTokens = 0;
+    const userId = meResult?.userId ?? null;
+
+    if (teamId != null && userId != null && billingStart > 0 && billingEnd > 0) {
+      const dailyModels = await fetchCursorDailySpend(token, teamId, userId, billingStart, billingEnd);
+      if (dailyModels && dailyModels.length > 0) {
+        models = dailyModels;
+        totalTokens = models.reduce((sum, m) => sum + m.inputTokens, 0);
+      }
     }
 
     let leaderboardResult: PromiseSettledResult<CursorLeaderboard | null>;
@@ -498,12 +577,6 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
       ]);
     } else {
       leaderboardResult = { status: 'fulfilled', value: null };
-    }
-
-    if (usageSummaryResult) {
-      planType = usageSummaryResult.planType;
-      onDemand = usageSummaryResult.onDemand;
-      teamOnDemand = usageSummaryResult.teamOnDemand;
     }
     if (leaderboardResult.status === 'fulfilled' && leaderboardResult.value) {
       leaderboard = leaderboardResult.value;
@@ -549,9 +622,21 @@ async function getClaudeSessionToken(): Promise<string | null> {
 
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+function normalizeClaudePlanType(raw: string): string | undefined {
+  const lower = raw.toLowerCase();
+  if (lower.includes('enterprise')) return 'enterprise';
+  if (lower.includes('team')) return 'team';
+  if (lower === 'max' || lower.includes('max')) return 'max';
+  if (lower === 'pro' || lower.includes('professional') || lower.includes('pro_')) return 'pro';
+  if (lower === 'free' || lower.includes('free')) return 'free';
+  if (lower.includes('subscription') || lower.includes('stripe')) return undefined;
+  if (lower.includes('individual')) return 'pro';
+  return undefined;
+}
+
 async function fetchClaudeBootstrap(token: string): Promise<{
   accountUuid: string;
-  orgs: Array<{ uuid: string; name: string }>;
+  orgs: Array<{ uuid: string; name: string; planType?: string }>;
 } | null> {
   try {
     const res = await fetch('https://claude.ai/api/bootstrap', {
@@ -563,14 +648,52 @@ async function fetchClaudeBootstrap(token: string): Promise<{
     if (!account || typeof account.uuid !== 'string') return null;
 
     const memberships = account.memberships as Array<Record<string, unknown>> | undefined;
-    const orgs: Array<{ uuid: string; name: string }> = [];
+    const orgs: Array<{ uuid: string; name: string; planType?: string }> = [];
     if (Array.isArray(memberships)) {
       for (const m of memberships) {
         const org = m.organization as Record<string, unknown> | undefined;
         if (org && typeof org.uuid === 'string') {
+          let planType: string | undefined;
+          for (const key of ['billing_type', 'plan_type', 'subscription_type', 'plan', 'type']) {
+            const val = org[key];
+            if (typeof val === 'string' && val) {
+              const normalized = normalizeClaudePlanType(val);
+              if (normalized) {
+                planType = normalized;
+                break;
+              }
+            }
+          }
+          if (!planType) {
+            const settings = org.settings as Record<string, unknown> | undefined;
+            if (settings) {
+              for (const key of ['billing_type', 'plan_type']) {
+                const val = settings[key];
+                if (typeof val === 'string' && val) {
+                  const normalized = normalizeClaudePlanType(val);
+                  if (normalized) {
+                    planType = normalized;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          const activeFlags = org.active_flags as string[] | undefined;
+          if (!planType && Array.isArray(activeFlags)) {
+            for (const flag of activeFlags) {
+              if (typeof flag !== 'string') continue;
+              const normalized = normalizeClaudePlanType(flag);
+              if (normalized) {
+                planType = normalized;
+                break;
+              }
+            }
+          }
           orgs.push({
             uuid: org.uuid,
             name: typeof org.name === 'string' ? org.name : '',
+            planType,
           });
         }
       }
@@ -578,6 +701,90 @@ async function fetchClaudeBootstrap(token: string): Promise<{
     return { accountUuid: account.uuid, orgs };
   } catch {
     return null;
+  }
+}
+
+async function fetchClaudeAdminUsage(
+  adminKey: string,
+  startDate: string,
+  endDate: string,
+): Promise<ClaudeAdminUsageRow[]> {
+  try {
+    const params = new URLSearchParams({
+      group_by: 'model',
+      start_date: startDate,
+      end_date: endDate,
+      interval: 'month',
+    });
+    const res = await fetch(
+      `https://api.anthropic.com/v1/organizations/usage_report/messages?${params.toString()}`,
+      {
+        headers: {
+          'x-api-key': adminKey,
+          'anthropic-version': '2023-06-01',
+        },
+      },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as Record<string, unknown>;
+    const rows = data.data as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(rows)) return [];
+
+    const byModel: Record<string, ClaudeAdminUsageRow> = {};
+    for (const row of rows) {
+      const model = typeof row.model === 'string' ? row.model : 'unknown';
+      if (!byModel[model]) {
+        byModel[model] = { model, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
+      }
+      const m = byModel[model];
+      m.inputTokens += typeof row.input_tokens === 'number' ? row.input_tokens : 0;
+      m.outputTokens += typeof row.output_tokens === 'number' ? row.output_tokens : 0;
+      m.cacheCreationTokens += typeof row.cache_creation_input_tokens === 'number' ? row.cache_creation_input_tokens : 0;
+      m.cacheReadTokens += typeof row.cache_read_input_tokens === 'number' ? row.cache_read_input_tokens : 0;
+    }
+    return Object.values(byModel);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchClaudeAdminCost(
+  adminKey: string,
+  startDate: string,
+  endDate: string,
+): Promise<ClaudeAdminCostRow[]> {
+  try {
+    const params = new URLSearchParams({
+      group_by: 'model',
+      start_date: startDate,
+      end_date: endDate,
+      interval: 'month',
+    });
+    const res = await fetch(
+      `https://api.anthropic.com/v1/organizations/cost_report?${params.toString()}`,
+      {
+        headers: {
+          'x-api-key': adminKey,
+          'anthropic-version': '2023-06-01',
+        },
+      },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as Record<string, unknown>;
+    const rows = data.data as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(rows)) return [];
+
+    const byModel: Record<string, ClaudeAdminCostRow> = {};
+    for (const row of rows) {
+      const model = typeof row.model === 'string' ? row.model : 'unknown';
+      if (!byModel[model]) {
+        byModel[model] = { model, costUsd: 0 };
+      }
+      byModel[model].costUsd += typeof row.cost_usd === 'number' ? row.cost_usd : 0;
+    }
+    return Object.values(byModel);
+  } catch {
+    return [];
   }
 }
 
@@ -627,7 +834,7 @@ export async function fetchClaudeAiCosts(): Promise<ToolCostSummary> {
     const config = await loadConfig();
 
     // Determine org order: config override first, then try all orgs
-    const orgsToTry: Array<{ uuid: string; name: string }> = [];
+    const orgsToTry: Array<{ uuid: string; name: string; planType?: string }> = [];
     if (config.claudeOrgId) {
       const match = bootstrap.orgs.find((o) => o.uuid === config.claudeOrgId);
       if (match) orgsToTry.push(match);
@@ -654,14 +861,55 @@ export async function fetchClaudeAiCosts(): Promise<ToolCostSummary> {
         spentCents,
         limitCents,
         orgName: org.name,
+        planType: org.planType,
       };
+
+      const now = new Date();
+      const startDate = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const endDate = localDateStr(nextMonth);
+
+      let models: ModelCostBreakdown[] = [];
+      let totalInput = 0;
+      let totalOutput = 0;
+      let totalCacheW = 0;
+      let totalCacheR = 0;
+
+      if (config.claudeAdminApiKey) {
+        const [usageRows, costRows] = await Promise.all([
+          fetchClaudeAdminUsage(config.claudeAdminApiKey, startDate, endDate),
+          fetchClaudeAdminCost(config.claudeAdminApiKey, startDate, endDate),
+        ]);
+
+        if (usageRows.length > 0) {
+          const costMap = new Map(costRows.map((c) => [c.model, c.costUsd]));
+          for (const u of usageRows) {
+            totalInput += u.inputTokens;
+            totalOutput += u.outputTokens;
+            totalCacheW += u.cacheCreationTokens;
+            totalCacheR += u.cacheReadTokens;
+            models.push({
+              model: u.model,
+              inputTokens: u.inputTokens,
+              outputTokens: u.outputTokens,
+              cacheWriteTokens: u.cacheCreationTokens,
+              cacheReadTokens: u.cacheReadTokens,
+              costUsd: costMap.get(u.model) ?? 0,
+            });
+          }
+          models.sort((a, b) => b.costUsd - a.costUsd);
+        }
+      }
 
       return {
         tool: 'Claude.ai',
         totalCostUsd: spentCents / 100,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        models: [],
+        totalInputTokens: totalInput,
+        totalOutputTokens: totalOutput,
+        totalCacheWriteTokens: totalCacheW > 0 ? totalCacheW : undefined,
+        totalCacheReadTokens: totalCacheR > 0 ? totalCacheR : undefined,
+        planType: org.planType,
+        models,
         claudeAi,
         period,
       };

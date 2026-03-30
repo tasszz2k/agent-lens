@@ -75,6 +75,7 @@ program
           configRoots: config.roots,
           hasCursorToken: !!config.cursorSessionToken,
           hasClaudeSessionToken: !!config.claudeSessionToken,
+          hasClaudeAdminApiKey: !!config.claudeAdminApiKey,
           version,
         })
       );
@@ -148,6 +149,7 @@ program
           configRoots: config.roots,
           hasCursorToken: !!config.cursorSessionToken,
           hasClaudeSessionToken: !!config.claudeSessionToken,
+          hasClaudeAdminApiKey: !!config.claudeAdminApiKey,
           version,
         })
       );
@@ -245,6 +247,7 @@ const configCmd = program
   .option('--clear-claude-session-token', 'Remove stored Claude.ai session token')
   .option('--set-claude-org-id <id>', 'Set Claude.ai organization UUID')
   .option('--clear-claude-org-id', 'Remove Claude.ai organization UUID')
+
   .action(async (opts) => {
     if (opts.setCursorToken) {
       await setCursorToken(opts.setCursorToken);
@@ -302,6 +305,7 @@ const configCmd = program
       console.log('Claude.ai organization ID removed.');
       return;
     }
+
 
     if (opts.addRoot) {
       const config = await addRoot(opts.addRoot);

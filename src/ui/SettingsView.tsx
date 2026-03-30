@@ -30,6 +30,7 @@ interface SettingsViewProps {
   configRoots: string[];
   hasCursorToken: boolean;
   hasClaudeSessionToken: boolean;
+  hasClaudeAdminApiKey: boolean;
 }
 
 export default function SettingsView({
@@ -46,6 +47,7 @@ export default function SettingsView({
   configRoots,
   hasCursorToken,
   hasClaudeSessionToken,
+  hasClaudeAdminApiKey,
 }: SettingsViewProps) {
   const [cursor, setCursor] = useState(0);
 
@@ -119,6 +121,27 @@ export default function SettingsView({
         kind: 'info', id: 'claude-ai-hint',
         render: () => (
           <Text dimColor>{'    '.padEnd(col + 4)}agentlens config --set-claude-session-token {'<token>'}</Text>
+        ),
+      });
+    }
+
+    result.push({
+      kind: 'info', id: 'claude-admin-key',
+      render: () => (
+        <Text>
+          {'    '}
+          <Text dimColor>{'Admin API Key'.padEnd(col)}</Text>
+          {hasClaudeAdminApiKey
+            ? <Text color="green">configured</Text>
+            : <Text dimColor>not set (optional, enables model breakdown)</Text>}
+        </Text>
+      ),
+    });
+    if (!hasClaudeAdminApiKey) {
+      result.push({
+        kind: 'info', id: 'claude-admin-hint',
+        render: () => (
+          <Text dimColor>{'    '.padEnd(col + 4)}agentlens config --set-claude-admin-key {'<key>'}</Text>
         ),
       });
     }
