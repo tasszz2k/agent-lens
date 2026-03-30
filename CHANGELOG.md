@@ -2,6 +2,13 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.11](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.10...agentlens-v0.5.11) (2026-03-30)
+
+
+### Features
+
+* **cost:** show per-model Cursor usage with on-demand costs ([ec1d40c](https://github.com/tasszz2k/agent-lens/commit/ec1d40c6e0dc00f6177d42ff70740a3a75726d5d))
+
 ## [0.5.10](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.9...agentlens-v0.5.10) (2026-03-13)
 
 
