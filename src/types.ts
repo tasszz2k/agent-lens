@@ -109,13 +109,30 @@ export interface ToolCostSummary {
   models: ModelCostBreakdown[];
   period: string;
   error?: string;
+  included?: IncludedUsage;
   onDemand?: OnDemandUsage;
   teamOnDemand?: OnDemandUsage;
+  pooled?: PooledUsage;
+  limitType?: 'team' | 'individual';
+  billingCycleStartMs?: number;
+  billingCycleEndMs?: number;
   leaderboard?: CursorLeaderboard;
   claudeAi?: ClaudeAiUsage;
 }
 
 export interface OnDemandUsage {
+  enabled: boolean;
+  usedCents: number;
+  limitCents: number;
+}
+
+export interface IncludedUsage {
+  enabled: boolean;
+  usedCents: number;
+  limitCents: number;
+}
+
+export interface PooledUsage {
   enabled: boolean;
   usedCents: number;
   limitCents: number;

@@ -10,6 +10,7 @@ import CostView from './CostView.js';
 import { theme } from './theme.js';
 import type { ScanResult, TreeNode, ToolConfig, ConfigEntry, Diagnostic, LinkedEntry, CostReport } from '../types.js';
 import { fetchAllCosts } from '../cost.js';
+import { loadCostCache, saveCostCache } from '../cost-cache.js';
 import { setToolEnabled, setCategoryEnabled, setCostToolEnabled, matchesDisabledCategory } from '../config.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -345,6 +346,24 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+function mergeToolIntoReport(
+  prev: CostReport | null,
+  summary: import('../types.js').ToolCostSummary,
+): CostReport {
+  const now = new Date();
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const month = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  if (!prev) {
+    return { tools: [summary], month, monthStart, fetchedAt: now.toISOString() };
+  }
+  const idx = prev.tools.findIndex((t) => t.tool === summary.tool);
+  const tools = idx >= 0
+    ? [...prev.tools.slice(0, idx), summary, ...prev.tools.slice(idx + 1)]
+    : [...prev.tools, summary];
+  return { ...prev, tools, fetchedAt: now.toISOString() };
+}
+
 export default function App({
   scanResult,
   diagnostics,
@@ -378,6 +397,8 @@ export default function App({
   const [commandBarActive, setCommandBarActive] = useState(false);
   const [costReport, setCostReport] = useState<CostReport | null>(null);
   const [costLoading, setCostLoading] = useState(false);
+  const [costCacheAgeMs, setCostCacheAgeMs] = useState<number | null>(null);
+  const [costLoadingTools, setCostLoadingTools] = useState<Set<string>>(() => new Set());
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
 
   useEffect(() => {
@@ -488,21 +509,68 @@ export default function App({
   }, []);
 
   const handleFetchCosts = useCallback(async () => {
+    const skip = disabledCostTools ?? new Set<string>();
+    const willRun = ['Claude.ai', 'Claude Code', 'Cursor'].filter((t) => !skip.has(t));
+    setCostLoadingTools(new Set(willRun));
     setCostLoading(true);
+
+    // Seed the report with placeholders for any tool we don't already have,
+    // so the user sees an immediate "Tool ... refreshing" row even on a cold
+    // open with no cache.
+    setCostReport((prev) => {
+      let working: CostReport | null = prev;
+      for (const t of willRun) {
+        if (!working || !working.tools.some((existing) => existing.tool === t)) {
+          working = mergeToolIntoReport(working, {
+            tool: t,
+            totalCostUsd: 0,
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+            models: [],
+            period: '',
+          });
+        }
+      }
+      return working;
+    });
+
     try {
-      const report = await fetchAllCosts(disabledCostTools);
+      const report = await fetchAllCosts(disabledCostTools, (summary) => {
+        setCostReport((prev) => mergeToolIntoReport(prev, summary));
+        setCostLoadingTools((prev) => {
+          if (!prev.has(summary.tool)) return prev;
+          const next = new Set(prev);
+          next.delete(summary.tool);
+          return next;
+        });
+      });
       setCostReport(report);
+      setCostCacheAgeMs(0);
+      void saveCostCache(report);
     } catch {
-      // best-effort
+      // best-effort; keep any existing report on screen
     } finally {
       setCostLoading(false);
+      setCostLoadingTools(new Set());
     }
   }, [disabledCostTools]);
 
   useEffect(() => {
-    if (page === 'cost' && !costLoading) {
-      handleFetchCosts();
-    }
+    if (page !== 'cost') return;
+    let cancelled = false;
+    (async () => {
+      if (!costReport) {
+        const cached = await loadCostCache();
+        if (!cancelled && cached) {
+          setCostReport(cached.report);
+          setCostCacheAgeMs(cached.ageMs);
+        }
+      }
+      if (!cancelled && !costLoading) {
+        handleFetchCosts();
+      }
+    })();
+    return () => { cancelled = true; };
   }, [page]);
 
   const handleCommandBarOpen = useCallback(() => {
@@ -663,8 +731,10 @@ export default function App({
         )}
         {page === 'cost' && (
           <CostView
-            report={costReport}
+            report={costReport ? { ...costReport, tools: costReport.tools.filter((t) => !disabledCostTools.has(t.tool)) } : null}
             loading={costLoading}
+            cacheAgeMs={costCacheAgeMs}
+            loadingTools={costLoadingTools}
             onClose={handleCostClose}
             onRefresh={handleFetchCosts}
             onCommandBarOpen={handleCommandBarOpen}

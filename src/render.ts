@@ -278,6 +278,10 @@ function formatTokenCount(n: number): string {
   return String(n);
 }
 
+function formatDollars(cents: number): string {
+  return (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export function renderCostStatic(report: CostReport): string {
   const lines: string[] = [];
   lines.push(chalk.bold(`AGENTLENS -- Cost Report: ${report.month}`));
@@ -323,11 +327,48 @@ export function renderCostStatic(report: CostReport): string {
       lines.push(`  ${bar} ${tool.totalRequests} / ${tool.maxRequests} premium requests (${pct}%)`);
     }
 
+    if (tool.included && tool.included.limitCents > 0) {
+      const inc = tool.included;
+      const used = inc.usedCents / 100;
+      const limit = inc.limitCents / 100;
+      lines.push(`  Spend limit: ${chalk.cyan('$' + limit.toFixed(2))}`);
+      const ratio = limit > 0 ? inc.usedCents / inc.limitCents : 0;
+      const barWidth = 20;
+      const filled = Math.round(ratio * barWidth);
+      const bar = chalk.green('\u2588'.repeat(filled)) + chalk.dim('\u2591'.repeat(barWidth - filled));
+      const pctStr = (ratio * 100).toFixed(1);
+      lines.push(`  ${bar} $${used.toFixed(2)} / $${limit.toFixed(2)} (${pctStr}%)`);
+
+      if (tool.billingCycleStartMs && tool.billingCycleEndMs && used > 0) {
+        const now = Date.now();
+        const cycleStart = tool.billingCycleStartMs;
+        const cycleEnd = tool.billingCycleEndMs;
+        const totalMs = cycleEnd - cycleStart;
+        const elapsedMs = Math.max(1, Math.min(now, cycleEnd) - cycleStart);
+        const dayMs = 24 * 60 * 60 * 1000;
+        const elapsedDays = Math.max(1, elapsedMs / dayMs);
+        const totalDays = Math.max(1, totalMs / dayMs);
+        const dailyAvg = used / elapsedDays;
+        const projected = dailyAvg * totalDays;
+        const daysLeft = Math.max(0, Math.ceil((cycleEnd - now) / dayMs));
+        lines.push(`  ${chalk.dim('Daily avg:')} $${dailyAvg.toFixed(2)}${chalk.dim('/day')}  ${chalk.dim('|  Projected:')} ${chalk.yellow('$' + projected.toFixed(2))} ${chalk.dim(`(${daysLeft}d left)`)}`);
+      }
+    }
+
     if (tool.onDemand?.enabled) {
-      const used = (tool.onDemand.usedCents / 100).toFixed(2);
-      const limit = (tool.onDemand.limitCents / 100).toFixed(2);
-      const onDemandStr = `  On-Demand: ${chalk.green('$' + used)} / ${chalk.green('$' + limit)}`;
-      lines.push(onDemandStr);
+      const used = formatDollars(tool.onDemand.usedCents);
+      if (tool.limitType === 'team') {
+        lines.push(`  Team On-Demand: ${chalk.green('$' + used)} ${chalk.dim('used')}`);
+      } else {
+        const limit = formatDollars(tool.onDemand.limitCents);
+        lines.push(`  On-Demand: ${chalk.green('$' + used)} / ${chalk.green('$' + limit)}`);
+      }
+    }
+
+    if (tool.pooled?.enabled && tool.limitType === 'team' && tool.pooled.limitCents > 0) {
+      const used = formatDollars(tool.pooled.usedCents);
+      const limit = formatDollars(tool.pooled.limitCents);
+      lines.push(chalk.dim(`  Team Pooled: $${used} / $${limit}`));
     }
 
     if (tool.claudeAi) {

@@ -98,14 +98,22 @@ program
   .action(async (opts) => {
     const { fetchAllCosts, fetchClaudeCodeCosts, fetchClaudeAiCosts } = await import('./cost.js');
 
-    const skipCursor = opts.cursor === false;
-    const skipClaudeAi = opts.claudeAi === false;
+    const cliConfig = await loadConfig();
+    const configDisabled = new Set(cliConfig.disabledCostTools ?? []);
+    const skipCursor = opts.cursor === false || configDisabled.has('Cursor');
+    const skipClaudeAi = opts.claudeAi === false || configDisabled.has('Claude.ai');
+    const skipClaudeCode = configDisabled.has('Claude Code');
 
     async function buildReport() {
-      if (!skipCursor && !skipClaudeAi) return fetchAllCosts();
+      const disabled = new Set<string>();
+      if (skipCursor) disabled.add('Cursor');
+      if (skipClaudeAi) disabled.add('Claude.ai');
+      if (skipClaudeCode) disabled.add('Claude Code');
+      if (disabled.size === 0) return fetchAllCosts();
+
       const fetchers: Promise<import('./types.js').ToolCostSummary>[] = [];
       if (!skipClaudeAi) fetchers.push(fetchClaudeAiCosts());
-      fetchers.push(fetchClaudeCodeCosts());
+      if (!skipClaudeCode) fetchers.push(fetchClaudeCodeCosts());
       if (!skipCursor) {
         const { fetchCursorCosts } = await import('./cost.js');
         fetchers.push(fetchCursorCosts());
@@ -123,6 +131,8 @@ program
 
     if (opts.json) {
       const report = await buildReport();
+      const { saveCostCache } = await import('./cost-cache.js');
+      void saveCostCache(report);
       console.log(renderJson(report));
       return;
     }
@@ -159,6 +169,8 @@ program
     } else {
       const { renderCostStatic } = await import('./render.js');
       const report = await buildReport();
+      const { saveCostCache } = await import('./cost-cache.js');
+      void saveCostCache(report);
       console.log(renderCostStatic(report));
     }
   });

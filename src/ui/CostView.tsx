@@ -1,10 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { CostReport } from '../types.js';
+import { formatCacheAge } from '../cost-cache.js';
 
 interface CostViewProps {
   report: CostReport | null;
   loading: boolean;
+  cacheAgeMs: number | null;
+  loadingTools: Set<string>;
   onClose: () => void;
   onRefresh: () => void;
   onCommandBarOpen: () => void;
@@ -12,6 +15,8 @@ interface CostViewProps {
   height: number;
   width: number;
 }
+
+const SPINNER_FRAMES = ['\u280B', '\u2819', '\u2839', '\u2838', '\u283C', '\u2834', '\u2826', '\u2827', '\u2807', '\u280F'];
 
 function formatTokens(n: number): string {
   if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
@@ -24,39 +29,79 @@ function formatCost(n: number): string {
   return '$' + n.toFixed(2);
 }
 
+function formatDollars(cents: number): string {
+  return (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 interface LineItem {
   element: React.ReactElement;
 }
 
-function buildLines(report: CostReport, width: number): LineItem[] {
+function buildLines(
+  report: CostReport,
+  width: number,
+  status: { loading: boolean; cacheAgeMs: number | null; spinnerFrame: string; loadingTools: Set<string> },
+): LineItem[] {
   const lines: LineItem[] = [];
   const pad = (s: string, len: number) => s.padEnd(len);
   const padLeft = (s: string, len: number) => s.padStart(len);
 
-  lines.push({ element: <Text key="header" bold>COST -- {report.month}</Text> });
-  lines.push({ element: <Text key="hint" dimColor>(pressed r to refresh)</Text> });
+  let statusText: React.ReactNode;
+  if (status.loading) {
+    const showCachedBadge = status.cacheAgeMs != null;
+    statusText = showCachedBadge ? (
+      <Text dimColor>{` ${status.spinnerFrame} refreshing... (showing cached, ${formatCacheAge(status.cacheAgeMs!)})`}</Text>
+    ) : (
+      <Text dimColor>{` ${status.spinnerFrame} fetching cost data...`}</Text>
+    );
+  } else if (status.cacheAgeMs != null && status.cacheAgeMs > 1000) {
+    statusText = <Text dimColor>{` (cached, ${formatCacheAge(status.cacheAgeMs)})`}</Text>;
+  } else {
+    statusText = <Text dimColor>{' (press r to refresh)'}</Text>;
+  }
+
+  lines.push({
+    element: (
+      <Text key="header">
+        <Text bold>COST -- {report.month}</Text>
+        {statusText}
+      </Text>
+    ),
+  });
   lines.push({ element: <Text key="sp1">{' '}</Text> });
 
   let totalUsd = 0;
 
   for (const tool of report.tools) {
+    const isToolLoading = status.loadingTools.has(tool.tool);
+    const spinnerSuffix = isToolLoading ? `  ${status.spinnerFrame}` : '';
+
     if (tool.error) {
-      const dash = padLeft('--', width - tool.tool.length);
+      const rightStr = isToolLoading ? `${status.spinnerFrame} refreshing` : '--';
+      const rightLen = rightStr.length;
+      const padding = ' '.repeat(Math.max(1, width - tool.tool.length - rightLen));
       lines.push({
         element: (
           <Text key={`tool-${tool.tool}-err`}>
             <Text bold color="white">{tool.tool}</Text>
-            <Text color="red">{dash}</Text>
+            <Text>{padding}</Text>
+            {isToolLoading ? (
+              <Text color="cyan">{rightStr}</Text>
+            ) : (
+              <Text color="red">{rightStr}</Text>
+            )}
           </Text>
         ),
       });
-      lines.push({
-        element: (
-          <Text key={`tool-${tool.tool}-err-msg`} color="red">
-            {'  Error: '}{tool.error}
-          </Text>
-        ),
-      });
+      if (!isToolLoading) {
+        lines.push({
+          element: (
+            <Text key={`tool-${tool.tool}-err-msg`} color="red">
+              {'  Error: '}{tool.error}
+            </Text>
+          ),
+        });
+      }
       continue;
     }
 
@@ -82,22 +127,28 @@ function buildLines(report: CostReport, width: number): LineItem[] {
     }
 
     const planLabel = tool.planType ? ` (${tool.planType})` : '';
+    const rightCellText = `${costStr}${spinnerSuffix}`;
+    const padLen = Math.max(1, width - tool.tool.length - planLabel.length - rightCellText.length);
     lines.push({
       element: (
         <Text key={`tool-${tool.tool}`}>
           <Text bold color="white">{tool.tool}</Text>
           <Text dimColor>{planLabel}</Text>
-          <Text color={costColor}>{padLeft(costStr, width - tool.tool.length - planLabel.length)}</Text>
+          <Text>{' '.repeat(padLen)}</Text>
+          <Text color={costColor}>{costStr}</Text>
+          {isToolLoading && <Text color="cyan">{spinnerSuffix}</Text>}
         </Text>
       ),
     });
-    lines.push({
-      element: (
-        <Text key={`period-${tool.tool}`} dimColor>
-          {'  Period: '}{tool.period}
-        </Text>
-      ),
-    });
+    if (tool.period) {
+      lines.push({
+        element: (
+          <Text key={`period-${tool.tool}`} dimColor>
+            {'  Period: '}{tool.period}
+          </Text>
+        ),
+      });
+    }
 
     if (hasRequests && hasLimit) {
       const pct = ((tool.totalRequests! / tool.maxRequests!) * 100).toFixed(1);
@@ -116,31 +167,109 @@ function buildLines(report: CostReport, width: number): LineItem[] {
       });
     }
 
-    if (tool.onDemand?.enabled) {
-      const odUsed = (tool.onDemand!.usedCents / 100).toFixed(2);
-      const odLimit = (tool.onDemand!.limitCents / 100).toFixed(2);
-      const odLine = `  On-Demand: $${odUsed} / $${odLimit}`;
+    if (tool.included && tool.included.limitCents > 0) {
+      const inc = tool.included;
+      const usedDollars = inc.usedCents / 100;
+      const limitDollars = inc.limitCents / 100;
       lines.push({
         element: (
-          <Text key={`ondemand-${tool.tool}`}>
-            {odLine}
+          <Text key={`limit-${tool.tool}`}>
+            {'  Spend limit: '}<Text color="cyan">{`$${limitDollars.toFixed(2)}`}</Text>
           </Text>
         ),
       });
-      const odBarWidth = 20;
-      const odRatio = tool.onDemand!.limitCents > 0
-        ? tool.onDemand!.usedCents / tool.onDemand!.limitCents
-        : 0;
-      const odFilled = Math.round(odRatio * odBarWidth);
-      const odBar = '\u2588'.repeat(odFilled) + '\u2591'.repeat(odBarWidth - odFilled);
-      const odPct = (odRatio * 100).toFixed(1);
+      const incBarWidth = 20;
+      const incRatio = inc.usedCents / inc.limitCents;
+      const incFilled = Math.round(incRatio * incBarWidth);
+      const incBar = '\u2588'.repeat(incFilled) + '\u2591'.repeat(incBarWidth - incFilled);
+      const incPct = (incRatio * 100).toFixed(1);
       lines.push({
         element: (
-          <Text key={`ondemand-bar-${tool.tool}`}>
+          <Text key={`limit-bar-${tool.tool}`}>
             {'  '}
-            <Text color="green">{odBar.slice(0, odFilled)}</Text>
-            <Text dimColor>{odBar.slice(odFilled)}</Text>
-            {` $${odUsed} / $${odLimit} (${odPct}%)`}
+            <Text color="green">{incBar.slice(0, incFilled)}</Text>
+            <Text dimColor>{incBar.slice(incFilled)}</Text>
+            {` $${usedDollars.toFixed(2)} / $${limitDollars.toFixed(2)} (${incPct}%)`}
+          </Text>
+        ),
+      });
+
+      if (tool.billingCycleStartMs && tool.billingCycleEndMs && usedDollars > 0) {
+        const now = Date.now();
+        const cycleStart = tool.billingCycleStartMs;
+        const cycleEnd = tool.billingCycleEndMs;
+        const totalMs = cycleEnd - cycleStart;
+        const elapsedMs = Math.max(1, Math.min(now, cycleEnd) - cycleStart);
+        const dayMs = 24 * 60 * 60 * 1000;
+        const elapsedDays = Math.max(1, elapsedMs / dayMs);
+        const totalDays = Math.max(1, totalMs / dayMs);
+        const dailyAvg = usedDollars / elapsedDays;
+        const projected = dailyAvg * totalDays;
+        const daysLeft = Math.max(0, Math.ceil((cycleEnd - now) / dayMs));
+        lines.push({
+          element: (
+            <Text key={`daily-${tool.tool}`}>
+              {'  '}
+              <Text dimColor>{'Daily avg: '}</Text>
+              <Text color="white">{formatCost(dailyAvg)}</Text>
+              <Text dimColor>{'/day'}</Text>
+              <Text dimColor>{'  |  Projected: '}</Text>
+              <Text color="yellow">{formatCost(projected)}</Text>
+              <Text dimColor>{` (${daysLeft}d left)`}</Text>
+            </Text>
+          ),
+        });
+      }
+    }
+
+    if (tool.onDemand?.enabled) {
+      const odUsed = formatDollars(tool.onDemand!.usedCents);
+      if (tool.limitType === 'team') {
+        lines.push({
+          element: (
+            <Text key={`ondemand-${tool.tool}`}>
+              {'  Team On-Demand: '}
+              <Text color="green">{`$${odUsed}`}</Text>
+              <Text dimColor>{' used'}</Text>
+            </Text>
+          ),
+        });
+      } else {
+        const odLimit = formatDollars(tool.onDemand!.limitCents);
+        lines.push({
+          element: (
+            <Text key={`ondemand-${tool.tool}`}>
+              {`  On-Demand: $${odUsed} / $${odLimit}`}
+            </Text>
+          ),
+        });
+        const odBarWidth = 20;
+        const odRatio = tool.onDemand!.limitCents > 0
+          ? tool.onDemand!.usedCents / tool.onDemand!.limitCents
+          : 0;
+        const odFilled = Math.round(odRatio * odBarWidth);
+        const odBar = '\u2588'.repeat(odFilled) + '\u2591'.repeat(odBarWidth - odFilled);
+        const odPct = (odRatio * 100).toFixed(1);
+        lines.push({
+          element: (
+            <Text key={`ondemand-bar-${tool.tool}`}>
+              {'  '}
+              <Text color="green">{odBar.slice(0, odFilled)}</Text>
+              <Text dimColor>{odBar.slice(odFilled)}</Text>
+              {` $${odUsed} / $${odLimit} (${odPct}%)`}
+            </Text>
+          ),
+        });
+      }
+    }
+
+    if (tool.pooled?.enabled && tool.limitType === 'team' && tool.pooled.limitCents > 0) {
+      const pUsed = formatDollars(tool.pooled.usedCents);
+      const pLimit = formatDollars(tool.pooled.limitCents);
+      lines.push({
+        element: (
+          <Text key={`pooled-${tool.tool}`} dimColor>
+            {`  Team Pooled: $${pUsed} / $${pLimit}`}
           </Text>
         ),
       });
@@ -391,6 +520,8 @@ function buildLines(report: CostReport, width: number): LineItem[] {
 export default function CostView({
   report,
   loading,
+  cacheAgeMs,
+  loadingTools,
   onClose,
   onRefresh,
   onCommandBarOpen,
@@ -400,12 +531,26 @@ export default function CostView({
 }: CostViewProps) {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [pendingG, setPendingG] = useState(false);
+  const [spinnerIdx, setSpinnerIdx] = useState(0);
+
+  useEffect(() => {
+    if (!loading) return;
+    const id = setInterval(() => {
+      setSpinnerIdx((prev) => (prev + 1) % SPINNER_FRAMES.length);
+    }, 80);
+    return () => clearInterval(id);
+  }, [loading]);
 
   const lines = useMemo(() => {
     if (!report) return [];
     const contentWidth = width - 4;
-    return buildLines(report, contentWidth);
-  }, [report, width]);
+    return buildLines(report, contentWidth, {
+      loading,
+      cacheAgeMs,
+      spinnerFrame: SPINNER_FRAMES[spinnerIdx],
+      loadingTools,
+    });
+  }, [report, width, loading, cacheAgeMs, spinnerIdx, loadingTools]);
 
   const borderRows = 4;
   const footerRows = 2;
@@ -465,7 +610,8 @@ export default function CostView({
     { isActive: true }
   );
 
-  if (loading) {
+  if (loading && !report) {
+    const spinner = SPINNER_FRAMES[spinnerIdx];
     return (
       <Box
         flexDirection="column"
@@ -477,7 +623,13 @@ export default function CostView({
         justifyContent="center"
         alignItems="center"
       >
-        <Text dimColor>Loading cost data...</Text>
+        <Text>
+          <Text color="cyan">{spinner}</Text>
+          <Text dimColor>{'  Fetching cost data from Claude.ai, Claude Code, and Cursor...'}</Text>
+        </Text>
+        <Box marginTop={1}>
+          <Text dimColor>{'(first load only -- subsequent loads use cache)'}</Text>
+        </Box>
       </Box>
     );
   }

@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { CostReport, ToolCostSummary, ModelCostBreakdown, OnDemandUsage, CursorLeaderboard, ClaudeAiUsage } from './types.js';
+import type { CostReport, ToolCostSummary, ModelCostBreakdown, OnDemandUsage, IncludedUsage, PooledUsage, CursorLeaderboard, ClaudeAiUsage } from './types.js';
 import { loadConfig, setClaudeOrgId } from './config.js';
 
 interface ClaudeAdminUsageRow {
@@ -213,44 +213,83 @@ function normalizeCursorTierName(key: string): string {
   return CURSOR_TIER_NAMES[key] ?? key;
 }
 
-async function fetchCursorUsageSummary(token: string): Promise<{
+interface CursorUsageSummary {
   planType: string | undefined;
+  limitType: 'team' | 'individual' | undefined;
+  included: IncludedUsage | undefined;
   onDemand: OnDemandUsage | undefined;
   teamOnDemand: OnDemandUsage | undefined;
-} | null> {
+  pooled: PooledUsage | undefined;
+  billingCycleStartMs: number | undefined;
+  billingCycleEndMs: number | undefined;
+}
+
+function parseUsageBucket<T extends { enabled: boolean; usedCents: number; limitCents: number }>(
+  bucket: unknown,
+): T | undefined {
+  if (!bucket || typeof bucket !== 'object') return undefined;
+  const b = bucket as Record<string, unknown>;
+  if (typeof b.enabled !== 'boolean') return undefined;
+  const used = typeof b.used === 'number' ? b.used : Number(b.used);
+  const limit = typeof b.limit === 'number' ? b.limit : Number(b.limit);
+  return {
+    enabled: b.enabled,
+    usedCents: Number.isFinite(used) ? used : 0,
+    limitCents: Number.isFinite(limit) ? limit : 0,
+  } as T;
+}
+
+function parseIsoMs(value: unknown): number | undefined {
+  if (typeof value !== 'string') return undefined;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+async function fetchCursorUsageSummary(token: string): Promise<CursorUsageSummary | null> {
   try {
     const res = await fetch('https://cursor.com/api/usage-summary', {
       headers: { Cookie: `WorkosCursorSessionToken=${token}` },
     });
     if (!res.ok) return null;
     const data = (await res.json()) as Record<string, unknown>;
+
     let planType: string | undefined;
     const mt = data.membershipType;
     if (typeof mt === 'string' && mt !== 'free') planType = mt;
 
-    let onDemand: OnDemandUsage | undefined;
+    let limitType: 'team' | 'individual' | undefined;
+    if (data.limitType === 'team' || data.limitType === 'individual') {
+      limitType = data.limitType;
+    }
+
     const ind = data.individualUsage as Record<string, unknown> | undefined;
-    const indOd = ind?.onDemand as Record<string, unknown> | undefined;
-    if (indOd && typeof indOd.enabled === 'boolean') {
-      onDemand = {
-        enabled: indOd.enabled,
-        usedCents: typeof indOd.used === 'number' ? indOd.used : 0,
-        limitCents: typeof indOd.limit === 'number' ? indOd.limit : 0,
-      };
-    }
-
-    let teamOnDemand: OnDemandUsage | undefined;
     const team = data.teamUsage as Record<string, unknown> | undefined;
-    const teamOd = team?.onDemand as Record<string, unknown> | undefined;
-    if (teamOd && typeof teamOd.enabled === 'boolean') {
-      teamOnDemand = {
-        enabled: teamOd.enabled,
-        usedCents: typeof teamOd.used === 'number' ? teamOd.used : 0,
-        limitCents: typeof teamOd.limit === 'number' ? teamOd.limit : 0,
-      };
-    }
 
-    return { planType, onDemand, teamOnDemand };
+    // New shape: individualUsage.overall is the user's monthly bucket.
+    // Legacy shape: individualUsage.onDemand was the on-demand tracker.
+    const included =
+      parseUsageBucket<IncludedUsage>(ind?.overall) ??
+      parseUsageBucket<IncludedUsage>(ind?.included);
+
+    // On-demand now lives under teamUsage.onDemand for team plans; fall back
+    // to legacy individualUsage.onDemand if present.
+    const onDemand =
+      parseUsageBucket<OnDemandUsage>(team?.onDemand) ??
+      parseUsageBucket<OnDemandUsage>(ind?.onDemand);
+
+    const teamOnDemand = parseUsageBucket<OnDemandUsage>(team?.onDemand);
+    const pooled = parseUsageBucket<PooledUsage>(team?.pooled);
+
+    return {
+      planType,
+      limitType,
+      included,
+      onDemand,
+      teamOnDemand,
+      pooled,
+      billingCycleStartMs: parseIsoMs(data.billingCycleStart),
+      billingCycleEndMs: parseIsoMs(data.billingCycleEnd),
+    };
   } catch {
     return null;
   }
@@ -513,48 +552,71 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
     const [usageRes, meResult, configResult, usageSummaryResult] = await Promise.all([
       fetch('https://cursor.com/api/usage', {
         headers: { Cookie: `WorkosCursorSessionToken=${token}` },
-      }),
+      }).catch((err) => err as Error),
       fetchCursorMe(token),
       loadConfig().catch(() => ({ cursorTeamId: undefined } as { cursorTeamId?: number })),
       fetchCursorUsageSummary(token),
     ]);
 
-    // Premium request counts from /api/usage
+    const subErrors: string[] = [];
+
+    // Premium request counts from /api/usage (legacy; may be empty for new dollar-based plans)
     let totalRequests = 0;
     let maxRequests: number | undefined;
-    if (usageRes.ok) {
-      const usageData = (await usageRes.json()) as Record<string, unknown>;
-      for (const [key, val] of Object.entries(usageData)) {
-        if (key === 'startOfMonth' || typeof val !== 'object' || !val) continue;
-        const entry = val as Record<string, unknown>;
-        const reqs = typeof entry.numRequests === 'number' ? entry.numRequests : 0;
-        const maxReq = typeof entry.maxRequestUsage === 'number' ? entry.maxRequestUsage : undefined;
-        totalRequests += reqs;
-        if (maxReq != null) maxRequests = (maxRequests ?? 0) + maxReq;
+    if (usageRes instanceof Error) {
+      subErrors.push(`usage: ${usageRes.message}`);
+    } else if (usageRes.ok) {
+      try {
+        const usageData = (await usageRes.json()) as Record<string, unknown>;
+        for (const [key, val] of Object.entries(usageData)) {
+          if (key === 'startOfMonth' || typeof val !== 'object' || !val) continue;
+          const entry = val as Record<string, unknown>;
+          const reqs = typeof entry.numRequests === 'number' ? entry.numRequests : 0;
+          const maxReq = typeof entry.maxRequestUsage === 'number' ? entry.maxRequestUsage : undefined;
+          totalRequests += reqs;
+          if (maxReq != null) maxRequests = (maxRequests ?? 0) + maxReq;
+        }
+      } catch (err) {
+        subErrors.push(`usage parse: ${extractErrorMessage(err)}`);
       }
+    } else {
+      subErrors.push(`usage: HTTP ${usageRes.status}`);
     }
 
     let planType: string | undefined;
+    let limitType: 'team' | 'individual' | undefined;
+    let included: IncludedUsage | undefined;
     let onDemand: OnDemandUsage | undefined;
     let teamOnDemand: OnDemandUsage | undefined;
+    let pooled: PooledUsage | undefined;
+    let billingCycleStartMs: number | undefined;
+    let billingCycleEndMs: number | undefined;
     let leaderboard: CursorLeaderboard | undefined;
 
     if (usageSummaryResult) {
       planType = usageSummaryResult.planType;
+      limitType = usageSummaryResult.limitType;
+      included = usageSummaryResult.included;
       onDemand = usageSummaryResult.onDemand;
       teamOnDemand = usageSummaryResult.teamOnDemand;
+      pooled = usageSummaryResult.pooled;
+      billingCycleStartMs = usageSummaryResult.billingCycleStartMs;
+      billingCycleEndMs = usageSummaryResult.billingCycleEndMs;
+    } else {
+      subErrors.push('usage-summary: failed');
     }
 
     const email = meResult?.email || await getCursorEmail();
     let teamId = configResult.cursorTeamId ?? null;
-    let billingStart = 0;
-    let billingEnd = 0;
+    let billingStart = billingCycleStartMs ?? 0;
+    let billingEnd = billingCycleEndMs ?? 0;
 
     const teamInfo = await fetchCursorTeamInfo(token);
     if (teamInfo) {
       teamId = teamInfo.teamId;
-      billingStart = teamInfo.billingCycleStartMs;
-      billingEnd = teamInfo.billingCycleEndMs;
+      // Prefer team endpoint cycle if usage-summary didn't provide one.
+      if (billingStart === 0) billingStart = teamInfo.billingCycleStartMs;
+      if (billingEnd === 0) billingEnd = teamInfo.billingCycleEndMs;
     }
 
     // Per-model token + cost data from daily-spend API
@@ -567,6 +629,8 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
       if (dailyModels && dailyModels.length > 0) {
         models = dailyModels;
         totalTokens = models.reduce((sum, m) => sum + m.inputTokens, 0);
+      } else {
+        subErrors.push('daily-spend: no data');
       }
     }
 
@@ -582,7 +646,22 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
       leaderboard = leaderboardResult.value;
     }
 
-    const cursorCostUsd = onDemand?.enabled ? onDemand.usedCents / 100 : 0;
+    const includedSpendCents = included?.enabled ? included.usedCents : 0;
+    const onDemandSpendCents = onDemand?.enabled ? onDemand.usedCents : 0;
+    const dailySpendCents = models.reduce((sum, m) => sum + Math.round(m.costUsd * 100), 0);
+    // Prefer the daily-spend total when present (matches dashboard exactly);
+    // fall back to included + on-demand from the usage-summary buckets.
+    const totalCents = dailySpendCents > 0 ? dailySpendCents : includedSpendCents + onDemandSpendCents;
+    const cursorCostUsd = totalCents / 100;
+
+    // Only surface sub-errors when we have nothing useful to show.
+    const hasAnyData =
+      cursorCostUsd > 0 ||
+      included != null ||
+      onDemand != null ||
+      pooled != null ||
+      models.length > 0 ||
+      totalRequests > 0;
 
     return {
       tool: 'Cursor',
@@ -592,11 +671,17 @@ export async function fetchCursorCosts(): Promise<ToolCostSummary> {
       totalRequests,
       maxRequests,
       planType,
+      limitType,
+      included,
       onDemand,
       teamOnDemand,
+      pooled,
+      billingCycleStartMs: billingStart > 0 ? billingStart : undefined,
+      billingCycleEndMs: billingEnd > 0 ? billingEnd : undefined,
       leaderboard,
       models,
       period,
+      error: hasAnyData ? undefined : (subErrors.length > 0 ? subErrors.join('; ') : 'No data returned from Cursor APIs'),
     };
   } catch (err) {
     return {
@@ -937,7 +1022,10 @@ export async function fetchClaudeAiCosts(): Promise<ToolCostSummary> {
   }
 }
 
-export async function fetchAllCosts(disabledCostTools?: Set<string>): Promise<CostReport> {
+export async function fetchAllCosts(
+  disabledCostTools?: Set<string>,
+  onTool?: (summary: ToolCostSummary) => void,
+): Promise<CostReport> {
   const now = new Date();
   const monthStart = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -950,24 +1038,32 @@ export async function fetchAllCosts(disabledCostTools?: Set<string>): Promise<Co
   if (!skip.has('Claude Code')) fetchers.push({ tool: 'Claude Code', promise: fetchClaudeCodeCosts() });
   if (!skip.has('Cursor')) fetchers.push({ tool: 'Cursor', promise: fetchCursorCosts() });
 
-  const results = await Promise.allSettled(fetchers.map((f) => f.promise));
-  const tools: ToolCostSummary[] = [];
-  for (let i = 0; i < fetchers.length; i++) {
-    const r = results[i];
-    if (r.status === 'fulfilled') {
-      tools.push(r.value);
-    } else {
-      tools.push({
-        tool: fetchers[i].tool,
-        totalCostUsd: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        models: [],
-        period: formatPeriod(),
-        error: extractErrorMessage(r.reason),
-      });
-    }
-  }
+  // Settle each fetcher independently and stream updates via onTool as they
+  // resolve, so the UI can render Claude Code (fast/local) immediately
+  // without waiting for Cursor (slow/remote).
+  const wrapped = fetchers.map((f) =>
+    f.promise.then(
+      (value) => {
+        onTool?.(value);
+        return value;
+      },
+      (reason: unknown) => {
+        const errorSummary: ToolCostSummary = {
+          tool: f.tool,
+          totalCostUsd: 0,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          models: [],
+          period: formatPeriod(),
+          error: extractErrorMessage(reason),
+        };
+        onTool?.(errorSummary);
+        return errorSummary;
+      },
+    ),
+  );
+
+  const tools = await Promise.all(wrapped);
 
   return {
     tools,
