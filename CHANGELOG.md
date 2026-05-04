@@ -2,6 +2,13 @@
 
 All notable changes to AgentLens are documented in this file.
 
+## [0.5.12](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.11...agentlens-v0.5.12) (2026-05-04)
+
+
+### Features
+
+* **cost:** refresh Cursor API parsing, add cache and streaming UX ([6d5200c](https://github.com/tasszz2k/agent-lens/commit/6d5200c522980301df946a9613f50d72af83d8e2))
+
 ## [0.5.11](https://github.com/tasszz2k/agent-lens/compare/agentlens-v0.5.10...agentlens-v0.5.11) (2026-03-30)
 
 
